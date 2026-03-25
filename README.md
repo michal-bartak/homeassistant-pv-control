@@ -172,3 +172,29 @@ This dashboard uses:
 - `custom:apex-charts` for graphs
 - `custom:button-card` for controls
 - `custom:restriction-card` for locking UI elements
+
+# The Rabbit Hole
+
+During development, it’s very easy to fall into the “just one more feature” spiral. The model presented here is intentionally kept as simple as possible, but there are many directions where it could be extended. For example:
+
+- defining different energy requirements for each day of the week  
+- using more granular Solcast data (e.g. hourly) to better estimate battery charging time  
+- calculating (dis)chargin time windows with higher precission
+- pick up most expensive time periods instead of continuous blocks
+- operating fully in the energy/power domain instead of relying on SOC and estimated transfer rates  
+- planning additional loads for the next day
+- introducing a “vacation mode” to reflect lower household consumption  
+- integrating with a calendar to anticipate changes in usage
+- incorporating AI to predict household consumption based on historical data
+
+So, is it worth it?
+
+From a learning and development perspective—definitely yes. It’s a great playground for experimenting and improving your setup.
+
+From a financial perspective, it’s less clear.
+
+More advanced logic means more complex code, more configuration, and more edge cases to handle—such as vacations, holidays, or unusual household behavior. Higher precision and tighter margins also require more accurate predictions, especially for household consumption, which is inherently difficult to model. In practice, this can even place additional expectations on other household members.
+
+And in the end, the improvement in ROI may be marginal.
+
+That said, it always depends on the specific setup. In some cases, the extra complexity might pay off—but it’s worth considering whether the added effort is justified.
