@@ -19,21 +19,21 @@ Here is the evolution of total selling and purchasing prices over the past years
 The ROI (Return on Investment) is built on two main components:
 
 - **PV energy consumed by the household** – This should form the largest portion of ROI. It represents the cost of electricity you did not have to buy thanks to your PV system. The more PV energy you can store and use within the household, the better.
-- **PV energy sold** – Typically, more energy (in kWh) is sold, but its total contribution to ROI is significantly smaller.
+- **PV energy sold** – Typically, more energy (in kWh) is sold, but its total contribution to ROI is significantly smaller.ß
 
 Given this, income from sold energy is only a fraction of total ROI. In my household, the ratio was approximately 1:4 in 2025.
 
 ![ROI build-up](images/roi_buildup.png)
 
-There are several ways to manage electricity. In most countries, it is possible to choose between flat rates and spot pricing for both buying and selling independently.
+There are several ways to manage electricity prices. In most countries, it is possible to choose between flat rates and spot pricing for both buying and selling independently.
 
-Using spot prices for both (so-called “spot surfing”) is likely the most efficient approach. However, it requires adapting the entire household to shift consumption to the cheapest time periods—not every family is ready for that. We are not.
+Using spot prices for both (so-called “spot surfing”) is likely the most efficient approach. However, it requires adapting the entire household to shift consumption to the cheapest time periods. I guess not every family is ready for that. We are not.
 
 I opted for a hybrid approach: buying electricity at a flat rate (preferably fixed for several years, especially in today’s uncertain environment) and selling at spot prices.
 
-Selling at spot prices opens opportunities for optimization. This article presents a simple yet effective method of using spot prices and weather forecasts to extract additional value from a PV system.
+Selling at spot prices opens opportunities for some optimizations. This article presents a simple yet effective method of using spot prices and weather forecasts to extract additional value from a PV system.
 
-To make this work, reliable data sources are essential. Spot prices are officially published and are often already integrated into Home Assistant. For PV production forecasting, Solcast is the best solution I know. It offers a free tier for hobby users (with some limitations) and works very accurately for my location.
+To make this work, reliable data sources are essential. Spot prices are officially published in advance and are often already integrated into Home Assistant. For PV production forecasting, **Solcast** is the best solution I know. It offers a free tier for hobby users (with some limitations) and works very accurately for my location.
 
 <img src="images/prices_and_sun.png" alt="Prices and Irradiance" width="70%">
 
@@ -181,9 +181,9 @@ During development, it’s very easy to fall into the “just one more feature�
 - using more granular Solcast data (e.g. hourly) to better estimate battery charging time  
 - calculating (dis)chargin time windows with higher precission
 - pick up most expensive time periods instead of continuous blocks
-- operating fully in the energy/power domain instead of relying on SOC and estimated transfer rates  
+- operating fully in the energy/power domain instead of relying on SOC and estimated transfer rates
 - planning additional loads for the next day
-- introducing a “vacation mode” to reflect lower household consumption  
+- introducing a “vacation mode” to reflect lower household consumption
 - integrating with a calendar to anticipate changes in usage
 - incorporating AI to predict household consumption based on historical data
 
