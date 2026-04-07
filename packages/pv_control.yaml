@@ -1,0 +1,1355 @@
+pv_ctrl_control:
+  input_number:
+    pv_ctrl_min_export_price:
+      name: Min Export Price (for 1MWh)
+      icon: mdi:cash-clock
+      min: 0
+      max: 10000
+      step: 1
+      mode: box
+    pv_ctrl_min_suncast_current_day:
+      name: Min Suncast Current Day
+      icon: mdi:sun-wireless
+      unit_of_measurement: kWh
+      min: 10
+      max: 50
+      step: 1
+      mode: slider
+    pv_ctrl_min_suncast_next_day:
+      name: Min Suncast Next Day
+      icon: mdi:sun-wireless
+      unit_of_measurement: kWh
+      min: 10
+      max: 50
+      step: 1
+      mode: slider
+    pv_ctrl_soc_limit_morning:
+      name: SOC Limit Morning
+      icon: mdi:battery-30
+      unit_of_measurement: "%"
+      min: 15
+      max: 100
+      step: 1
+      mode: slider
+    pv_ctrl_charge_delay_min_soc:
+      name: Charge Delay Min. Soc
+      icon: mdi:battery-10
+      unit_of_measurement: "%"
+      min: 0
+      max: 100
+      step: 1
+      mode: slider
+    pv_ctrl_charge_forecast_overhead:
+      name: Charge Forecast Overhead
+      icon: mdi:margin
+      unit_of_measurement: "%"
+      min: 0
+      max: 100
+      step: 1
+      mode: slider
+    pv_ctrl_soc_limit_evening:
+      name: SOC Limit Evening
+      icon: mdi:battery-70
+      unit_of_measurement: "%"
+      min: 15
+      max: 100
+      step: 1
+      mode: slider
+    pv_ctrl_charge_velocity:
+      name: Charge Velocity
+      icon: mdi:meter-electric-outline
+      unit_of_measurement: "kW"
+      min: 0
+      max: 100
+      mode: box
+    pv_ctrl_discharge_velocity:
+      name: Discharge Velocity
+      icon: mdi:meter-electric-outline
+      unit_of_measurement: "kW"
+      min: 0
+      max: 100
+      mode: box
+    pv_ctrl_battery_capacity:
+      name: Battery Capacity
+      icon: mdi:battery-high
+      unit_of_measurement: "kWh"
+      min: 0
+      max: 100
+      mode: box
+    pv_ctrl_time_granularity:
+      name: Time Granularity
+      icon: mdi:time-sand
+      unit_of_measurement: "min"
+      min: 0
+      max: 120
+      mode: box
+
+  input_datetime:
+    pv_ctrl_charge_delay_time_limit:
+      name: Charge Delay Time Limit
+      has_date: false
+      has_time: true
+      icon: mdi:battery-clock-outline
+
+  input_boolean:
+    pv_ctrl_edit_mode:
+      name: PV Edit Mode
+      icon: mdi:pencil-lock-outline
+    pv_ctrl_active:
+      name: PV Control Active
+      icon: mdi:light-switch
+    pv_ctrl_debug:
+      name: PV Control Debug
+      icon: mdi:bug
+
+  input_select:
+    pv_ctrl_phase:
+      name: PV Control Phase
+      icon: mdi:form-select
+      options:
+        - General
+        - Morning Discharge
+        - Delayed Charge
+        - Cheapest Charge
+        - Evening Discharge
+    pv_ctrl_mode:
+      name: PV Control Mode
+      icon: mdi:form-select
+      options:
+        - Disabled
+        - Dry Run
+        - Active
+
+  template:
+    - sensor:
+        - default_entity_id: sensor.pv_ctrl_cheapest_hours
+          name: Cheapest Hours
+          unique_id: pv_ctrl_cheapest_hours
+          device_class: timestamp
+          icon: mdi:cash-clock
+          availability: "{{ has_value('sensor.solcast_pv_forecast_forecast_today') and has_value('sensor.today_spot_electricity_prices') }}"
+
+          state: >
+            {% set old_val = as_datetime(states('sensor.pv_ctrl_cheapest_hours')) %}
+            {% set charge_power = 4 %}
+            {% set interval_hours = 0.25 %}
+            {% set charge_per_interval = charge_power * interval_hours %}
+            {% set battery_capacity = 10 %}
+
+            {% set price_data = state_attr('sensor.today_spot_electricity_prices','data') %}
+            {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today','detailedForecast') %}
+
+            {% set today = now().date() %}
+
+            {# --- prices --- #}
+            {% set prices = price_data
+              | selectattr('time','defined')
+              | selectattr('time','search', today|string)
+              | list
+            %}
+
+            {# --- PV list (30min → 15min) --- #}
+            {% set pv_list = [] %}
+            {% for p in pv_data %}
+              {% if p.period_start is defined %}
+                {% set t = as_datetime(p.period_start) %}
+                {% if t.date() == today %}
+                  {% set val = (p.pv_estimate | float(0)) / 2 %}
+                  {% set pv_list = pv_list + [val, val] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+
+            {% if prices | length == 0 %}
+              unavailable
+            {% else %}
+
+              {# --- find cheapest index --- #}
+              {% set ns = namespace(min_price=999999, min_i=0) %}
+              {% for i in range(prices | length) %}
+                {% set p = prices[i].price | float(0) %}
+                {% if p < ns.min_price %}
+                  {% set ns.min_price = p %}
+                  {% set ns.min_i = i %}
+                {% endif %}
+              {% endfor %}
+
+              {# --- expansion state --- #}
+              {% set ns2 = namespace(
+                left=ns.min_i,
+                right=ns.min_i,
+                energy=charge_per_interval
+              ) %}
+
+              {# --- simulate expansion --- #}
+              {% for step in range(48) %}
+
+                {% if ns2.energy < battery_capacity %}
+
+                  {% set cost_left = 999999 %}
+                  {% set cost_right = 999999 %}
+
+                  {# left candidate #}
+                  {% if ns2.left > 0 %}
+                    {% set price = prices[ns2.left - 1].price | float(0) %}
+                    {% set pv = pv_list[ns2.left - 1] if pv_list | length > ns2.left - 1 else 0 %}
+                    {% set grid = [charge_per_interval - pv, 0] | max %}
+                    {% set cost_left = price * grid %}
+                  {% endif %}
+
+                  {# right candidate #}
+                  {% if ns2.right < prices | length - 1 %}
+                    {% set price = prices[ns2.right + 1].price | float(0) %}
+                    {% set pv = pv_list[ns2.right + 1] if pv_list | length > ns2.right + 1 else 0 %}
+                    {% set grid = [charge_per_interval - pv, 0] | max %}
+                    {% set cost_right = price * grid %}
+                  {% endif %}
+
+                  {# choose cheaper side #}
+                  {% if cost_left <= cost_right and ns2.left > 0 %}
+                    {% set ns2.left = ns2.left - 1 %}
+                  {% elif ns2.right < prices | length - 1 %}
+                    {% set ns2.right = ns2.right + 1 %}
+                  {% endif %}
+
+                  {% set ns2.energy = ns2.energy + charge_per_interval %}
+
+                {% endif %}
+
+              {% endfor %}
+
+              {# prevents race condition in executor automation #} 
+              {% if as_datetime(prices[ns2.left].time) < now() and old_val != None %}
+                {{ old_val }}
+              {% else %}
+                {{ prices[ns2.left].time }}
+              {% endif %}
+
+            {% endif %}
+
+        - default_entity_id: sensor.pv_ctrl_cheapest_hours_old
+          name: Cheapest Hours Old
+          unique_id: pv_ctrl_cheapest_hours_old
+          device_class: timestamp
+          icon: mdi:cash-clock
+          availability: "{{ has_value('sensor.today_spot_electricity_prices') }}"
+          state: >
+            {% set window = 12 %} 
+            {% set data = state_attr('sensor.today_spot_electricity_prices','data') %}
+            {% set today = now().date() %}
+            {% set tomorrow = (now() + timedelta(days=1)).date() %}
+
+            {% set today_prices = data
+              | selectattr('time','defined')
+              | selectattr('time','search', today|string)
+              | list
+            %}
+
+            {% if today_prices | length >= window %}
+
+              {% set ns = namespace(best_price=999999, best_index=0) %}
+
+              {% for i in range(0, today_prices | length - window + 1) %}
+                {% set window = today_prices[i:i+window] %}
+                {% set sum = window | map(attribute='price') | sum %}
+
+                {% if sum < ns.best_price %}
+                  {% set ns.best_price = sum %}
+                  {% set ns.best_index = i %}
+                {% endif %}
+              {% endfor %}
+
+              {{ today_prices[ns.best_index].time }}
+
+            {% else %}
+              unavailable
+            {% endif %}
+
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning
+          name: Most Expensive Hours Morning
+          unique_id: pv_ctrl_most_expensive_hours_morning
+          device_class: timestamp
+          icon: mdi:cash-clock
+          availability: "{{ has_value('sensor.wattsonic_battery_soc') and has_value('sensor.today_spot_electricity_prices') }}"
+          state: >
+            {# pv_ctrl_most_expensive_hours_morning #}
+            {% set e = 'sensor.pv_ctrl_most_expensive_hours_morning' %}
+            {% set v = states(e) %}
+            {% set old_val = v if has_value(e) else None %}
+
+            {% set soc = states('sensor.wattsonic_battery_soc') | float %}
+            {% set reserve = states('input_number.pv_ctrl_soc_limit_morning') | float %}
+            {% set data = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+
+            {% set discharge_power = 4 %}
+            {% set kwh_per_soc = 0.1 %}
+
+            {% set sellable_soc = max(0, soc - reserve) %}
+            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+            {% set hours = sellable_kwh / discharge_power %}
+            {% set window = (hours / 0.25) | round(0,'ceil') | int %}
+
+            {% set start_hour = 5 %}
+            {% set end_hour = 12 %}
+
+            {% set today = now().date() %}
+
+            {% set today_prices = data
+              | selectattr('time','defined')
+              | selectattr('time','search', today|string)
+              | list
+            %}
+
+            {% set ns = namespace(filtered=[]) %}
+            {% for item in today_prices %}
+              {% set t = as_datetime(item.time) %}
+              {% if start_hour <= t.hour < end_hour %}
+                {% set ns.filtered = ns.filtered + [item] %}
+              {% endif %}
+            {% endfor %}
+
+            {% set prices = ns.filtered %}
+
+            {% if prices | length >= window %}
+
+              {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+              {% for i in range(0, prices | length - window + 1) %}
+                {% set window_data = prices[i:i+window] %}
+                {% set sum = window_data | map(attribute='price') | sum %}
+
+                {% if sum > ns.best_price %}
+                  {% set ns.best_price = sum %}
+                  {% set ns.best_index = i %}
+                {% endif %}
+              {% endfor %}
+
+              {% set result = as_datetime(prices[ns.best_index].time) %}
+
+              {# prevents moving the target during and after discharge #}
+              {% if phase != 'Morning Discharge' and result > now() and soc > reserve or old_val == None %}
+                {{ result }}
+              {% else %}
+                {{ old_val }}
+              {% endif %}
+
+            {% else %}
+              {{ None }}
+            {% endif %}
+
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening
+          name: Most Expensive Hours Evening
+          unique_id: pv_ctrl_most_expensive_hours_evening
+          device_class: timestamp
+          icon: mdi:cash-clock
+          availability: "{{ has_value('sensor.wattsonic_battery_soc') and has_value('sensor.today_spot_electricity_prices') }}"
+          state: >
+            {# pv_ctrl_most_expensive_hours_evening #}
+            {% set e = 'sensor.pv_ctrl_most_expensive_hours_evening' %}
+            {% set v = states(e) %}
+            {% set old_val = v if has_value(e) else None %}
+
+            {% set soc = states('sensor.wattsonic_battery_soc') | float %}
+            {% set phase = states('input_select.pv_ctrl_phase') %}
+            {% set reserve = states('input_number.pv_ctrl_soc_limit_evening') | float %}
+            {% set data = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+
+            {% set discharge_power = 4 %}
+            {% set kwh_per_soc = 0.1 %}
+
+            {% set sellable_soc = max(0, soc - reserve) %}
+            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+            {% set hours = sellable_kwh / discharge_power %}
+            {% set window = (hours / 0.25) | round(0,'ceil') | int %}
+            {% set start_hour = 16 %}
+            {% set end_hour = 22 %}
+            {% set today = now().date() %}
+
+            {% set today_prices = data
+              | selectattr('time','defined')
+              | selectattr('time','search', today|string)
+              | list
+            %}
+
+            {% set ns = namespace(filtered=[]) %}
+            {% for item in today_prices %}
+              {% set t = as_datetime(item.time) %}
+              {% if start_hour <= t.hour < end_hour %}
+                {% set ns.filtered = ns.filtered + [item] %}
+              {% endif %}
+            {% endfor %}
+
+            {% set prices = ns.filtered %}
+
+            {% if prices | length >= window %}
+
+              {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+              {% for i in range(0, prices | length - window + 1) %}
+                {% set window_data = prices[i:i+window] %}
+                {% set sum = window_data | map(attribute='price') | sum %}
+
+                {% if sum > ns.best_price %}
+                  {% set ns.best_price = sum %}
+                  {% set ns.best_index = i %}
+                {% endif %}
+              {% endfor %}
+
+              {% set result = as_datetime(prices[ns.best_index].time) %}
+
+              {# prevents moving the target during and after discharge #}
+              {% if phase != 'Evening Discharge' and result > now() or old_val == None  %}
+                {{ result }}
+              {% else %}
+                {{ old_val }}
+              {% endif %}
+
+            {% else %}
+              {{ None }}
+            {% endif %}
+
+    - triggers:
+        - trigger: state
+          entity_id:
+            # - sensor.wattsonic_battery_soc
+            # - sensor.solcast_pv_forecast_forecast_today
+            - input_number.pv_ctrl_battery_capacity
+            - input_number.pv_ctrl_charge_velocity
+            - input_datetime.pv_ctrl_charge_delay_time_limit
+        - trigger: time_pattern
+          alias: time_trigger
+          minutes: "/1"
+      variables:
+        initial_val: "{{ dict(start=none, end=none, cost=3, energy=0, locked=false) }}"
+        phase: "{{ states('input_select.pv_ctrl_phase') | default('General') }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_cheapest_hours_test2', 'data') or initial_val }}"
+        current_date: "{{ now().date() }}"
+        locked: >
+          {{ true if old_val.start and as_datetime(current_date).date() == as_datetime(old_val.start).date() and now() >= as_datetime(old_val.start)
+            else false if old_val.start is none or old_val.start and as_datetime(current_date).date() != as_datetime(old_val.start).date()
+            else old_val.locked | default(false) }}
+        new_val: >
+          {% if locked %}
+            {{ old_val | combine({'locked': locked})}}
+          {% else %}
+            {% set price_data = state_attr('sensor.today_spot_electricity_prices', 'data') or [] %}
+            {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today', 'detailedForecast') or [] %}
+            {% set pv_data_interval = as_datetime(pv_data[1].period_start) - as_datetime(pv_data[0].period_start) %}
+
+            {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
+            {% set price_interval = as_datetime(price_data[1].time) - as_datetime(price_data[0].time) %}
+            {% set interval_multiplier = price_interval.total_seconds() / 3600 %}
+            {% set charge_per_interval = charge_power_cap * interval_multiplier %}
+            {% set min_export_price = states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 %}
+
+            {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
+            {% set soc = states('sensor.wattsonic_battery_soc') | float(0) / 100 %}
+            {% set to_charge = battery_capacity * (1 - soc) %}
+
+            {% set upper_boundary = today_at(states('input_datetime.pv_ctrl_charge_delay_time_limit')) %}
+
+            {# --- filter today's prices --- #}
+            {% set prices = price_data
+              | selectattr('time','defined')
+              | selectattr('time', '<=', (upper_boundary + price_interval).isoformat())
+              | list
+            %}
+
+            {# strip leading and trailing zero PV production #}
+            {% set nz = pv_data | selectattr('value','ne',0) | list %}
+            {% if nz %}
+              {% set first = pv_data.index(nz[0]) %}
+              {% set last = pv_data.index(nz[-1]) %}
+                {% set pv_trimmed = pv_data[first:last+1] %}
+            {% else %}
+              {% set pv_trimmed = [] %}
+            {% endif %}
+
+            {# --- merge (price-driven) --- #}
+            {% set ns = namespace(data=[], started=false) %}
+
+            {% for p in prices %}
+              {% set t = as_datetime(p.time) %}
+              {% set price = p.price | float(0) if p.price | float(0) > min_export_price else min_export_price %}
+
+              {# namespace for pv #}
+              {% set pv_ns = namespace(val=0) %}
+
+              {# find matching PV slot #}
+              {% for f in pv_trimmed %}
+                {% set pt = as_datetime(f.period_start) %}
+                {% if pt <= t < pt + pv_data_interval %}
+                  {% set pv_ns.val = f.pv_estimate | float(0) %}
+                  {% break %}
+                {% endif %}
+              {% endfor %}
+
+              {# skip leading zero PV #}
+              {% if not ns.started and pv_ns.val == 0 %}
+                {% continue %}
+              {% endif %}
+
+              {% set ns.started = true %}
+
+              {% set ns.data = ns.data + [{
+                'time': t,
+                'price': price,
+                'pv_estimate': pv_ns.val,
+                'pv_price': pv_ns.val * price
+              }] %}
+            {% endfor %}
+
+            {% set best = namespace(cost=999999, start=None, end=None) %}
+
+            {% for i in range(ns.data | count) %}
+              {% set energy_ns = namespace(val=0) %}
+              {% set cost_ns = namespace(val=0) %}
+              {% set en_cover = to_charge -%}
+
+              {% for j in range(i, ns.data | count) %}
+                {% set item = ns.data[j] %}
+
+                {# usable power is limited by charger #}
+                {% set usable_power = [item.pv_estimate, charge_power_cap] | min -%}
+                {% set energy = usable_power * interval_multiplier -%}
+
+                {% set en_to_process = en_cover if en_cover < energy else energy -%}
+                {% set en_cover = en_cover - en_to_process -%}
+                
+                {% set energy_ns.val = energy_ns.val + en_to_process -%}
+                {% set cost_ns.val = cost_ns.val + (en_to_process * item.price) -%}
+
+                {% if energy_ns.val >= to_charge %}
+                  {% if cost_ns.val < best.cost %}
+                    {% set best.cost = cost_ns.val  | round(2) %}
+                    {% set best.start = ns.data[i].time %}
+                    {% set best.end = item.time %}
+                    {% set best.energy = energy_ns.val | round(2) %}
+                  {% endif %}
+                  {% break %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+
+            {% if best.start %}
+              {{ dict(
+                start  = best.start.isoformat(),
+                end    = best.end.isoformat(),
+                cost   = best.cost,
+                energy = best.energy,
+                locked = locked
+              ) }}
+            {% else %}
+              {{ initial_val }}
+            {% endif %}
+          {% endif %}
+      conditions:
+        - condition: template
+          value_template: "{{ not (locked and old_val.locked)}}"
+      sensor:
+        - default_entity_id: sensor.pv_ctrl_cheapest_hours_test2
+          name: Cheapest Hours Test
+          unique_id: pv_ctrl_cheapest_hours_test2
+          device_class: timestamp
+          icon: mdi:cash-clock
+          state: >
+            {% set nv = new_val | default(dict(start=none, end=none, cost=1, energy=0, locked=false)) %}
+            {{ nv.start }}
+          attributes:
+            data: "{{ new_val | default(dict(start=none, end=none, cost=2, energy=0, locked=false)) }}"
+
+    - triggers:
+        - trigger: state
+          entity_id:
+            # - sensor.wattsonic_battery_soc
+            # - sensor.solcast_pv_forecast_forecast_today
+            - input_number.pv_ctrl_soc_limit_morning
+            - input_number.pv_ctrl_discharge_velocity
+            - input_number.pv_ctrl_time_granularity
+            - input_number.pv_ctrl_battery_capacity
+        - trigger: time_pattern
+          alias: time_trigger
+          minutes: "/1"
+      variables:
+        initial_val: "{{ dict(start=none, end=none, locked=false) }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_morning_test2', 'data') or initial_val }}"
+        current_date: "{{ now().date() }}"
+        locked: >
+          {{ true if old_val.start and as_datetime(current_date).date() == as_datetime(old_val.start).date() and now() >= as_datetime(old_val.start)
+            else false if old_val.start is none or old_val.start and as_datetime(current_date).date() != as_datetime(old_val.start).date()
+            else old_val.locked | default(false) }}
+        new_val: >
+          {% if locked %}
+            {{ old_val | combine({'locked': locked})}}
+          {% else %}
+
+            {% set reserve          = states('input_number.pv_ctrl_soc_limit_morning') | float(100) %}
+            {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
+            {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
+            {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
+            {% set kwh_per_soc      = battery_capacity / 100 %}
+
+            {% set prices           = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+            {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
+
+            {% set start_hour = 5 %}
+            {% set end_hour   = 12 %}
+
+            {% set today_prices = prices
+              | selectattr('time','defined')
+              | selectattr('time','search', as_datetime(current_date).date()|string)
+              | list
+            %}
+
+            {% set sellable_soc = max(0, soc - reserve) %}
+            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+            {% set hours = sellable_kwh / discharge_power %}
+            {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+
+            {% set today_prices = prices
+              | selectattr('time','defined')
+              | selectattr('time','search', as_datetime(current_date).date()|string)
+              | list
+            %}
+
+            {% set ns = namespace(filtered=[]) %}
+            {% for item in today_prices %}
+              {% set t = as_datetime(item.time) %}
+              {% if start_hour <= t.hour < end_hour %}
+                {% set ns.filtered = ns.filtered + [item] %}
+              {% endif %}
+            {% endfor %}
+
+            {% set prices = ns.filtered %}
+
+            {% if window > 0 and prices | length >= window %}
+
+              {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+              {% for i in range(0, prices | length - window + 1) %}
+                {% set window_data = prices[i:i+window] %}
+                {% set sum = window_data | map(attribute='price') | sum %}
+
+                {% if sum > ns.best_price %}
+                  {% set ns.best_price = sum %}
+                  {% set ns.best_index = i %}
+                {% endif %}
+              {% endfor %}
+
+              {% set start = as_datetime(prices[ns.best_index].time) %}
+              
+              {# prevents moving the target incl jumping from future to the past #}
+              {% if old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
+                {{ old_val }}
+              {% else %}
+                {{ dict(
+                    start  = start.isoformat(),
+                    end    = (start + timedelta(minutes=window*time_granularity)).isoformat(),
+                    locked = locked
+                  ) }}
+              {% endif %}
+            {% else %}
+              {{ initial_val }}
+            {% endif %}
+          {% endif %}
+      conditions:
+        - condition: template
+          value_template: "{{ not (locked and old_val.locked)}}"
+      sensor:
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning_test2
+          name: Most Expensive Hours Morning Test2
+          unique_id: pv_ctrl_most_expensive_hours_morning_test2
+          device_class: timestamp
+          icon: mdi:cash-clock
+          state: >
+            {% set nv = new_val | default(dict(start=none, end=none, locked=false)) %}
+            {{ nv.start }}
+          attributes:
+            data: "{{ new_val | default(dict(start=none, end=none, locked=false)) }}"
+
+    - triggers:
+        - trigger: state
+          entity_id:
+            - input_number.pv_ctrl_soc_limit_evening
+            - input_number.pv_ctrl_time_granularity
+            - input_number.pv_ctrl_discharge_velocity
+            - input_number.pv_ctrl_battery_capacity
+        - trigger: time_pattern
+          alias: time_trigger
+          minutes: "/1"
+      variables:
+        initial_val: "{{ dict(start=none, end=none, locked=false) }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_evening_test2', 'data') or initial_val }}"
+        current_date: "{{ now().date() }}"
+        old_start_valid: "{{ old_val.start is not none }}"
+        locked: >
+          {{ true if old_start_valid and as_datetime(current_date).date() == as_datetime(old_val.start).date() and now() >= as_datetime(old_val.start)
+            else false if not old_start_valid or old_start_valid and as_datetime(current_date).date() != as_datetime(old_val.start).date()
+            else old_val.locked | default(false) }}
+        new_val: >
+          {% if locked %}
+            {{ old_val | combine({'locked': locked})}}
+          {% else %}
+            {% set reserve          = states('input_number.pv_ctrl_soc_limit_evening') | float(100) %}
+            {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
+            {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
+            {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
+            {% set kwh_per_soc      = battery_capacity / 100 %}
+
+            {% set prices           = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+            {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
+
+            {% set start_hour = 14 %}
+            {% set end_hour   = 25 %}
+
+            {% set today_prices = prices
+              | selectattr('time','defined')
+              | selectattr('time','search', as_datetime(current_date).date()|string)
+              | list
+            %}
+
+            {% set sellable_soc = max(0, soc - reserve) %}
+            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+            {% set hours = sellable_kwh / discharge_power %}
+            {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+
+            {% set today_prices = prices
+              | selectattr('time','defined')
+              | selectattr('time','search', as_datetime(current_date).date()|string)
+              | list
+            %}
+
+            {% set ns = namespace(filtered=[]) %}
+            {% for item in today_prices %}
+              {% set t = as_datetime(item.time) %}
+              {% if start_hour <= t.hour < end_hour %}
+                {% set ns.filtered = ns.filtered + [item] %}
+              {% endif %}
+            {% endfor %}
+
+            {% set prices = ns.filtered %}
+
+            {% if window > 0 and prices | length >= window %}
+
+              {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+              {% for i in range(0, prices | length - window + 1) %}
+                {% set window_data = prices[i:i+window] %}
+                {% set sum = window_data | map(attribute='price') | sum %}
+
+                {% if sum > ns.best_price %}
+                  {% set ns.best_price = sum %}
+                  {% set ns.best_index = i %}
+                {% endif %}
+              {% endfor %}
+
+              {% set start = as_datetime(prices[ns.best_index].time) %}
+              
+              {# prevents moving the target, incl jumping from future to the past #}
+              {% if old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
+                {{ old_val }}
+              {% else %}
+                {{ dict(
+                    start  = start.isoformat(),
+                    end    = (start + timedelta(minutes=window*time_granularity)).isoformat(),
+                    locked = locked
+                  ) }}
+              {% endif %}
+            {% else %}
+              {{ initial_val }}
+            {% endif %}
+          {% endif %}
+      conditions:
+        - condition: template
+          value_template: "{{ not (locked and old_val.locked) }}"
+      sensor:
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening_test2
+          name: Most Expensive Hours Evening Test2
+          unique_id: pv_ctrl_most_expensive_hours_evening_test2
+          device_class: timestamp
+          icon: mdi:cash-clock
+          state: >
+            {% set nv = new_val | default(initial_val) %}
+            {{ nv.start }}
+          attributes:
+            data: "{{ new_val | default(initial_val) }}"
+
+    - triggers:
+        trigger: state
+        entity_id:
+          - sensor.solcast_pv_forecast_forecast_today
+          - input_number.pv_ctrl_battery_capacity
+          - sensor.wattsonic_battery_soc
+          - input_number.pv_ctrl_charge_velocity
+          - input_number.pv_ctrl_time_granularity
+      variables:
+        data: >
+          {% set e = 'sensor.pv_ctrl_cheapest_hours_test' %}
+          {% set old_val = state_attr(e, 'data') or dict(start=none, end=none) %}
+
+          {% set charge_power = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
+          {% set interval_minutes = states('input_number.pv_ctrl_time_granularity') | float(60) %}
+          {% set interval_hours = interval_minutes / 60 %}
+          {% set charge_per_interval = charge_power * interval_hours %}
+          {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
+          {% set soc = states('sensor.wattsonic_battery_soc') | float(0) / 100 %}
+          {% set to_charge = battery_capacity*(1 - soc) %}
+
+          {% set price_data = state_attr('sensor.today_spot_electricity_prices','data') %}
+          {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today','detailedForecast') %}
+
+          {% set today = now().date() %}
+
+          {# --- prices --- #}
+          {% set prices = price_data
+            | selectattr('time','defined')
+            | selectattr('time','search', today|string)
+            | list
+          %}
+
+          {# --- PV list (30min → 15min) --- #}
+          {% set pv_list = [] %}
+          {% for p in pv_data %}
+            {% if p.period_start is defined %}
+              {% set t = as_datetime(p.period_start) %}
+              {% if t.date() == today %}
+                {% set val = (p.pv_estimate | float(0)) / 2 %}
+                {% set pv_list = pv_list + [val, val] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if prices | length > 0 %}
+
+            {# --- find cheapest index --- #}
+            {% set ns = namespace(min_price=999999, min_i=0) %}
+            {% for i in range(prices | length) %}
+              {% set p = prices[i].price | float(0) %}
+              {% if p < ns.min_price %}
+                {% set ns.min_price = p %}
+                {% set ns.min_i = i %}
+              {% endif %}
+            {% endfor %}
+
+            {# --- expansion state --- #}
+            {% set ns2 = namespace(
+              left=ns.min_i,
+              right=ns.min_i,
+              energy=charge_per_interval
+            ) %}
+
+            {# --- simulate expansion --- #}
+            {% for step in range(48) %}
+
+              {% if ns2.energy < to_charge %}
+
+                {% set cost_left = 999999 %}
+                {% set cost_right = 999999 %}
+
+                {# left candidate #}
+                {% if ns2.left > 0 %}
+                  {% set price = prices[ns2.left - 1].price | float(0) %}
+                  {% set pv = pv_list[ns2.left - 1] if pv_list | length > ns2.left - 1 else 0 %}
+                  {% set grid = [charge_per_interval - pv, 0] | max %}
+                  {% set cost_left = price * grid %}
+                {% endif %}
+
+                {# right candidate #}
+                {% if ns2.right < prices | length - 1 %}
+                  {% set price = prices[ns2.right + 1].price | float(0) %}
+                  {% set pv = pv_list[ns2.right + 1] if pv_list | length > ns2.right + 1 else 0 %}
+                  {% set grid = [charge_per_interval - pv, 0] | max %}
+                  {% set cost_right = price * grid %}
+                {% endif %}
+
+                {# choose cheaper side #}
+                {% if cost_left <= cost_right and ns2.left > 0 %}
+                  {% set ns2.left = ns2.left - 1 %}
+                {% elif ns2.right < prices | length - 1 %}
+                  {% set ns2.right = ns2.right + 1 %}
+                {% endif %}
+
+                {% set ns2.energy = ns2.energy + charge_per_interval %}
+
+              {% endif %}
+
+            {% endfor %}
+
+            {% set start = as_datetime(prices[ns2.left].time) %}
+
+            {# prevents race condition in executor automation #}
+            {% if old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
+              {{ old_val }}
+            {% else %}
+              {{ {
+                  "start": start.isoformat(),
+                  "end": (start + timedelta(minutes=(to_charge / charge_per_interval) | round(0,'ceil') * interval_minutes)).isoformat()
+                  }
+              }}
+            {% endif %}
+
+          {% else %}
+            {{ {
+                  "start": none,
+                  "end": none
+                } }}
+          {% endif %}
+
+      sensor:
+        default_entity_id: sensor.pv_ctrl_cheapest_hours_test
+        name: Cheapest Hours Test
+        unique_id: pv_ctrl_cheapest_hours_test
+        device_class: timestamp
+        icon: mdi:cash-clock
+        state: "{{ data.start }}"
+        attributes:
+          data: "{{ data }}"
+
+    - triggers:
+        trigger: state
+        entity_id:
+          - sensor.wattsonic_battery_soc
+          - input_select.pv_ctrl_phase
+          - input_number.pv_ctrl_soc_limit_morning
+          # - sensor.today_spot_electricity_prices
+      variables:
+        data: >
+          {# pv_ctrl_most_expensive_hours_morning #}
+          {% set e = 'sensor.pv_ctrl_most_expensive_hours_morning_test' %}
+          {% set old_val = state_attr(e, 'data') or dict(start=none, end=none) %}
+
+          {% set soc = states('sensor.wattsonic_battery_soc') | float(0) %}
+          {% set phase = states('input_select.pv_ctrl_phase') | default('General') %}
+          {% set reserve = states('input_number.pv_ctrl_soc_limit_morning') | float(100) %}
+          {% set prices = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+
+          {% set discharge_power = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
+          {% set kwh_per_soc = (states('input_number.pv_ctrl_discharge_velocity') | float(0)) / 100 %}
+          {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
+
+          {% set start_hour = 1 %}
+          {% set end_hour = 8 %}
+          {% set today = now().date() %}
+
+          {% set today_prices = prices
+            | selectattr('time','defined')
+            | selectattr('time','search', today|string)
+            | list
+          %}
+
+          {% set sellable_soc = max(0, soc - reserve) %}
+          {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+          {% set hours = sellable_kwh / discharge_power %}
+          {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+
+          {% set today_prices = prices
+            | selectattr('time','defined')
+            | selectattr('time','search', today|string)
+            | list
+          %}
+
+          {% set ns = namespace(filtered=[]) %}
+          {% for item in today_prices %}
+            {% set t = as_datetime(item.time) %}
+            {% if start_hour <= t.hour < end_hour %}
+              {% set ns.filtered = ns.filtered + [item] %}
+            {% endif %}
+          {% endfor %}
+
+          {% set prices = ns.filtered %}
+
+          {% if prices | length >= window %}
+
+            {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+            {% for i in range(0, prices | length - window + 1) %}
+              {% set window_data = prices[i:i+window] %}
+              {% set sum = window_data | map(attribute='price') | sum %}
+
+              {% if sum > ns.best_price %}
+                {% set ns.best_price = sum %}
+                {% set ns.best_index = i %}
+              {% endif %}
+            {% endfor %}
+
+            {% set start = as_datetime(prices[ns.best_index].time) %}
+            
+            {# prevents moving the target during and after discharge, incl jumping from future to the past #}
+            {% if phase == 'Morning Discharge' or old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
+              {{ old_val }}
+            {% else %}
+              {{ {
+                  "start": start.isoformat(),
+                  "end": (start + timedelta(minutes=window*time_granularity)).isoformat()
+                  }
+              }}
+            {% endif %}
+
+          {% else %}
+            {{ {
+                  "start": none,
+                  "end": none
+                } }}
+          {% endif %}
+      sensor:
+        default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning_test
+        name: Most Expensive Hours Morning Test
+        unique_id: pv_ctrl_most_expensive_hours_morning_test
+        device_class: timestamp
+        icon: mdi:cash-clock
+        state: "{{ data.start }}"
+        attributes:
+          data: "{{ data }}"
+
+    - triggers:
+        trigger: state
+        entity_id:
+          - sensor.wattsonic_battery_soc
+          - input_select.pv_ctrl_phase
+          - input_number.pv_ctrl_soc_limit_evening
+          # - sensor.today_spot_electricity_prices
+      variables:
+        data: >
+          {# pv_ctrl_most_expensive_hours_evening_test #}
+          {% set e = 'sensor.pv_ctrl_most_expensive_hours_evening_test' %}
+          {% set old_val = state_attr(e, 'data') or dict(start=none, end=none) %}
+
+          {% set soc = states('sensor.wattsonic_battery_soc') | float(0) %}
+          {% set phase = states('input_select.pv_ctrl_phase') | default('General') %}
+          {% set reserve = states('input_number.pv_ctrl_soc_limit_evening') | float(100) %}
+          {% set prices = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+
+          {% set discharge_power = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
+          {% set kwh_per_soc = (states('input_number.pv_ctrl_discharge_velocity') | float(0)) / 100 %}
+          {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
+
+          {% set start_hour = 16 %}
+          {% set end_hour = 22 %}
+          {% set today = now().date() %}
+
+          {% set sellable_soc = max(0, soc - reserve) %}
+          {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+
+          {% set hours = sellable_kwh / discharge_power %}
+          {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+
+          {% set today_prices = prices
+            | selectattr('time','defined')
+            | selectattr('time','search', today|string)
+            | list
+          %}
+
+          {% set ns = namespace(filtered=[]) %}
+          {% for item in today_prices %}
+            {% set t = as_datetime(item.time) %}
+            {% if start_hour <= t.hour < end_hour %}
+              {% set ns.filtered = ns.filtered + [item] %}
+            {% endif %}
+          {% endfor %}
+
+          {% set prices = ns.filtered %}
+
+          {% if prices | length >= window %}
+
+            {% set ns = namespace(best_price=-999999, best_index=0) %}
+
+            {% for i in range(0, prices | length - window + 1) %}
+              {% set window_data = prices[i:i+window] %}
+              {% set sum = window_data | map(attribute='price') | sum %}
+
+              {% if sum > ns.best_price %}
+                {% set ns.best_price = sum %}
+                {% set ns.best_index = i %}
+              {% endif %}
+            {% endfor %}
+
+            {% set start = as_datetime(prices[ns.best_index].time) %}
+            
+            {# prevents moving the target during and after discharge, incl jumping from future to the past #}
+            {% if phase == 'Evening Discharge' or old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
+              {{ old_val }}
+            {% else %}
+              {{ {
+                  "start": start.isoformat(),
+                  "end": (start + timedelta(minutes=window*time_granularity)).isoformat()
+                  }
+              }}
+            {% endif %}
+
+          {% else %}
+            {{ {
+                  "start": none,
+                  "end": none
+                } }}
+          {% endif %}
+      sensor:
+        default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening_test
+        name: Most Expensive Hours Evening Test
+        unique_id: pv_ctrl_most_expensive_hours_evening_test
+        device_class: timestamp
+        icon: mdi:cash-clock
+        state: "{{ data.start }}"
+        attributes:
+          data: "{{ data }}"
+
+  script:
+    pv_ctrl_inverter:
+      alias: PV Inverter Control
+      description: Master control script for PV Inverter
+      icon: mdi:solar-power
+      mode: single
+
+      fields:
+        mode:
+          description: Mode selector
+          example: "general | discharge_grid | no_charge | feedin"
+
+      sequence:
+        - choose:
+            # 🔹 GENERAL Phase
+            - conditions: "{{ mode == 'general' }}"
+              alias: General Mode, Also re-enables the charge limit to normal state
+              sequence:
+                - alias: "Set General mode, reset battery charge limit"
+                  action: script.wattsonic_set_charge_current_limit
+                  data:
+                    limit: 200
+                - action: script.wattsonic_mode_general
+
+            # 🔹 FeedIn Phase (or substritute, mainly limiting charging to battery )
+            - conditions: "{{ mode == 'feedin' }}"
+              alias: FeedIn mode, Or general mode with limited battery charge
+              sequence:
+                - alias: "Set Battery charge current to zero"
+                  action: script.wattsonic_set_charge_current_limit
+                  data:
+                    limit: 0
+                - alias: set General mode
+                  action: script.wattsonic_mode_general
+
+            # 🔹 DISCHARGE TO GRID (eco + battery config)
+            - conditions: "{{ mode == 'discharge_grid' }}"
+              alias: Discharge To Grid
+              sequence:
+                - alias: set battery discharge parameters
+                  action: modbus.write_register
+                  data:
+                    address: 53007
+                    hub: wattsonic
+                    slave: 247
+                    value:
+                      - 2
+                      - 0
+                      - 65535
+                      - 420
+                      - 65535
+                      - 0
+                      - 5947
+                - action: script.wattsonic_mode_economic
+
+            # 🔹 NO CHARGE AT ALL
+            - conditions: "{{ mode == 'charge_disabled' }}"
+              alias: No Charge
+              sequence:
+                - alias: "Disable battery charge"
+                  action: script.wattsonic_set_charge_current_limit
+                  data:
+                    limit: 0
+
+            # 🔹 CHARGE ENABLED
+            - conditions: "{{ mode == 'charge_enabled' }}"
+              alias: Chage enabled
+              sequence:
+                - alias: "Enable battery charge"
+                  action: script.wattsonic_set_charge_current_limit
+                  data:
+                    limit: 200
+
+          default:
+            - stop: "Unknown mode"
+
+  automation:
+    - id: pv_ctrl_executor
+      alias: PV Control Executor
+      mode: single
+
+      triggers:
+        - trigger: time
+          alias: discharge_morning
+          at: sensor.pv_ctrl_most_expensive_hours_morning_test2
+
+        - trigger: time
+          alias: charge_time
+          at: sensor.pv_ctrl_cheapest_hours_test2
+
+        - trigger: time
+          alias: discharge_evening
+          at: sensor.pv_ctrl_most_expensive_hours_evening_test2
+
+        - trigger: state
+          entity_id:
+            - sensor.wattsonic_battery_soc
+            - sensor.solcast_pv_forecast_forecast_today
+            - sensor.solcast_pv_forecast_forecast_tomorrow
+            - input_select.pv_ctrl_phase
+            - input_number.pv_ctrl_soc_limit_morning
+            - input_number.pv_ctrl_soc_limit_evening
+          to: null
+
+        - trigger: state
+          alias: price_change
+          entity_id:
+            - sensor.current_spot_electricity_price_15min
+            - input_number.pv_ctrl_min_export_price
+          to: null
+
+      variables:
+        mode: "{{ states('input_select.pv_ctrl_phase') }}"
+
+        min_pv_forecast_currentday: "{{ states('input_number.pv_ctrl_min_suncast_current_day') | float(1000) }}"
+        min_pv_forecast_nextday: "{{ states('input_number.pv_ctrl_min_suncast_next_day') | float(1000) }}"
+        min_soc_morning: "{{ states('input_number.pv_ctrl_soc_limit_morning') | float(100) }}"
+        min_soc_evening: "{{ states('input_number.pv_ctrl_soc_limit_evening') | float(100) }}"
+
+        min_export_price: "{{ states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 }}"
+
+        morning_time: >
+          {{ states('sensor.pv_ctrl_most_expensive_hours_morning_test2') | as_datetime(today_at("0:0")) }}
+        charge_time: >
+          {{ states('sensor.pv_ctrl_cheapest_hours_test2') | as_datetime(today_at("0:0")) }}
+        cheapest_time_end: >
+          {{ (state_attr('sensor.pv_ctrl_most_expensive_hours_morning_test2', 'data') or {}).get('end') }}
+        evening_time: >
+          {{ states('sensor.pv_ctrl_most_expensive_hours_evening_test2') | as_datetime(today_at("0:0")) }}
+
+        # Inverter sensor
+        soc: "{{ (states('sensor.wattsonic_battery_soc') | float(0) + 0.5) | int }}"
+
+        # Solcast sensors
+        forecast_today: "{{ states('sensor.solcast_pv_forecast_forecast_today') | float(0) }}"
+        forecast_tomorrow: "{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') | float(0) }}"
+
+        # Spot integration sensor
+        current_price: "{{ states('sensor.current_spot_electricity_price_15min') | float(0) }}"
+
+        next_mode: >
+          {% if trigger.alias == 'discharge_morning'
+                and soc > min_soc_morning and forecast_today > min_pv_forecast_currentday %}
+            Morning Discharge
+
+          {% elif trigger.alias == 'charge_time' %}
+            Cheapest Charge
+
+          {% elif trigger.alias == 'discharge_evening'
+                and soc > min_soc_evening and forecast_tomorrow > min_pv_forecast_nextday %}
+            Evening Discharge
+
+          {% elif mode == 'Morning Discharge' and soc <= min_soc_morning %}
+            General
+
+          {% elif now() >= as_datetime(morning_time) 
+                and now() < as_datetime(charge_time)
+                and mode == 'General'
+                and forecast_today > min_pv_forecast_currentday
+                and soc <= 95 %}
+            Delayed Charge
+
+          {% elif mode == 'Cheapest Charge' and (soc > 99 or cheapest_time_end is not none and now() >= as_datetime(cheapest_time_end)) %}
+            General
+
+          {% elif mode == 'Delayed Charge' and soc > 99 %}
+            General
+
+          {% elif mode == 'Evening Discharge' and soc <= min_soc_evening %}
+            General
+
+          {% else %} {{ mode }} {% endif %}
+
+      actions:
+        - if:
+            - condition: state
+              entity_id: input_select.pv_ctrl_mode
+              state: "Active"
+            - condition: template
+              alias: "Execute only on mode change"
+              value_template: "{{ next_mode != mode or next_mode == 'Delayed Charge' and trigger.alias == 'price_change' }}"
+          then:
+            - choose:
+                - conditions: "{{ next_mode == 'General' }}"
+                  sequence:
+                    - action: script.pv_ctrl_inverter
+                      data:
+                        mode: general
+
+                - conditions: "{{ next_mode == 'Morning Discharge' }}"
+                  sequence:
+                    - action: script.pv_ctrl_inverter
+                      data:
+                        mode: discharge_grid
+
+                - conditions: "{{ next_mode == 'Evening Discharge' }}"
+                  sequence:
+                    - action: script.pv_ctrl_inverter
+                      data:
+                        mode: discharge_grid
+
+                - conditions: "{{ next_mode == 'Cheapest Charge' }}"
+                  sequence:
+                    - action: script.pv_ctrl_inverter
+                      data:
+                        mode: general
+
+                - conditions: "{{ next_mode == 'Delayed Charge' }}"
+                  sequence:
+                    - choose:
+                        - conditions: "{{ current_price <= min_export_price }}"
+                          sequence:
+                            - action: script.pv_ctrl_inverter
+                              data:
+                                mode: general
+                        - conditions: "{{ current_price > min_export_price }}"
+                          sequence:
+                            - action: script.pv_ctrl_inverter
+                              data:
+                                mode: feedin
+
+        - if:
+            - condition: state
+              entity_id: input_select.pv_ctrl_mode
+              state:
+                - "Active"
+                - "Dry Run"
+            - condition: template
+              alias: "Execute only on mode change"
+              value_template: "{{ next_mode != mode or next_mode == 'Delayed Charge' and trigger.alias == 'price_change' }}"
+          then:
+            action: input_select.select_option
+            target:
+              entity_id: input_select.pv_ctrl_phase
+            data:
+              option: "{{ next_mode }}"
+
+        - if:
+            - condition: state
+              entity_id: input_select.pv_ctrl_mode
+              state:
+                - "Active"
+                - "Dry Run"
+            - condition: state
+              entity_id: input_boolean.pv_ctrl_debug
+              state: "on"
+          then:
+            action: system_log.write
+            data:
+              message: >-
+                mode: mode {{ mode }}, next_mode {{ next_mode }}, trigger {{ trigger.idx }} - {{ trigger.alias }} - {{ trigger.entity_id }},
+                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }}, 
+                current_price {{ current_price }}, min_export_price {{ min_export_price  }}, soc {{ soc }},
+                min_soc_morning {{ min_soc_morning  }}, min_soc_evening {{ min_soc_evening  }}
+              logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
+              level: warning
