@@ -127,19 +127,31 @@ The package creates the following entities:
 
 ## Configuration Entities
 
-- `input_boolean.pv_ctrl_active` – Enables or disables the automation
+- `input_boolean.pv_ctrl_edit_mode` - used for dashboard only, preventing accidental changes to the settings.
+- `input_select.pv_ctrl_mode` – Allows to enable the automation either in real or dry mode, or disable it. Dry-run mode does everything but requesting changes to the inverter settings. It's good to test if the automation phases proceed as expected.
 - `input_boolean.pv_ctrl_debug` – Enables or disables recording debug informations to the Home Assistant log
-- `input_select.pv_ctrl_phase` – Tracks the current automation phase. Not intended to be edited manually.
-- `input_number.pv_ctrl_min_suncast_tomorrow` – Minimum forecasted energy required to allow discharge
+- `input_select.pv_ctrl_phase` – Tracks the current automation phase. Not intended to be edited manually. Possible phases are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`.
+- `input_number.pv_ctrl_min_suncast_current_day` – Minimum forecasted energy for today required to allow the morning discharge
+- `input_number.pv_ctrl_min_suncast_next_date` – Minimum forecasted energy for tomorrow required to allow the evening discharge
 - `input_number.pv_ctrl_soc_limit_morning` – SOC limit for morning discharge (25%)
 - `input_number.pv_ctrl_soc_limit_evening` – SOC limit for evening discharge (70%)
 - `input_number.pv_ctrl_min_export_price` – Maximum energy price (per MWh), that prevents exporting energy (e.g., 250 CZK).
+- `input_number.pv_ctrl_charge_velocity` - Expected charged power, the velocity the battery can be charged with.
+- `input_number.pv_ctrl_discharge_velocity` - Expected discharge power, used to calculate a time needed to discharge battery to requested SOC
+- `input_number.pv_ctrl_battery_capacity` - Used in calculate 1% of SOC
+- `input_datetime.pv_ctrl_charge_delay_time_limit` - Allows to set up predicted time of charging end. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you want the battery charged fully at this time.
+
+
+---
+- pv_ctrl_charge_forecast_overhead
 
 ## Template Sensors
 
-- `sensor.pv_ctrl_most_expensive_h_morning` – Start time of morning discharge
-- `sensor.pv_ctrl_most_expensive_h_afternoon` – Start time of evening discharge
-- `sensor.pv_ctrl_cheapest_h_start` – Start time of cheapest charging window
+- `sensor.pv_ctrl_most_expensive_hours_morning` – Start time of morning discharge
+- `sensor.pv_ctrl_most_expensive_hours_afternoon` – Start time of evening discharge
+- `sensor.pv_ctrl_cheapest_hours` – Start time of cheapest charging window
+
+All sensors above consist of additional data under attributes.data key. The information is used for the internal logic as well as for dashboard.
 
 ## External Entities
 
