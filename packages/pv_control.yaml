@@ -135,7 +135,7 @@ pv_ctrl_control:
       variables:
         initial_val: "{{ dict(start=none, end=none, cost=3, energy=0, locked=false) }}"
         phase: "{{ states('input_select.pv_ctrl_phase') | default('General') }}"
-        old_val: "{{ state_attr('sensor.pv_ctrl_cheapest_hours_test2', 'data') or initial_val }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_cheapest_hours', 'data') or initial_val }}"
         current_date: "{{ now().date() }}"
         locked: >
           {{ true if old_val.start and as_datetime(current_date).date() == as_datetime(old_val.start).date() and now() >= as_datetime(old_val.start)
@@ -260,9 +260,9 @@ pv_ctrl_control:
         - condition: template
           value_template: "{{ not (locked and old_val.locked)}}"
       sensor:
-        - default_entity_id: sensor.pv_ctrl_cheapest_hours_test2
+        - default_entity_id: sensor.pv_ctrl_cheapest_hours
           name: Cheapest Hours Test
-          unique_id: pv_ctrl_cheapest_hours_test2
+          unique_id: pv_ctrl_cheapest_hours
           device_class: timestamp
           icon: mdi:cash-clock
           state: >
@@ -285,7 +285,7 @@ pv_ctrl_control:
           minutes: "/1"
       variables:
         initial_val: "{{ dict(start=none, end=none, locked=false) }}"
-        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_morning_test2', 'data') or initial_val }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_morning', 'data') or initial_val }}"
         current_date: "{{ now().date() }}"
         locked: >
           {{ true if old_val.start and as_datetime(current_date).date() == as_datetime(old_val.start).date() and now() >= as_datetime(old_val.start)
@@ -370,9 +370,9 @@ pv_ctrl_control:
         - condition: template
           value_template: "{{ not (locked and old_val.locked)}}"
       sensor:
-        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning_test2
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning
           name: Most Expensive Hours Morning Test2
-          unique_id: pv_ctrl_most_expensive_hours_morning_test2
+          unique_id: pv_ctrl_most_expensive_hours_morning
           device_class: timestamp
           icon: mdi:cash-clock
           state: >
@@ -393,7 +393,7 @@ pv_ctrl_control:
           minutes: "/1"
       variables:
         initial_val: "{{ dict(start=none, end=none, locked=false) }}"
-        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_evening_test2', 'data') or initial_val }}"
+        old_val: "{{ state_attr('sensor.pv_ctrl_most_expensive_hours_evening', 'data') or initial_val }}"
         current_date: "{{ now().date() }}"
         old_start_valid: "{{ old_val.start is not none }}"
         locked: >
@@ -478,9 +478,9 @@ pv_ctrl_control:
         - condition: template
           value_template: "{{ not (locked and old_val.locked) }}"
       sensor:
-        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening_test2
+        - default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening
           name: Most Expensive Hours Evening Test2
-          unique_id: pv_ctrl_most_expensive_hours_evening_test2
+          unique_id: pv_ctrl_most_expensive_hours_evening
           device_class: timestamp
           icon: mdi:cash-clock
           state: >
@@ -573,15 +573,15 @@ pv_ctrl_control:
       triggers:
         - trigger: time
           alias: discharge_morning
-          at: sensor.pv_ctrl_most_expensive_hours_morning_test2
+          at: sensor.pv_ctrl_most_expensive_hours_morning
 
         - trigger: time
           alias: charge_time
-          at: sensor.pv_ctrl_cheapest_hours_test2
+          at: sensor.pv_ctrl_cheapest_hours
 
         - trigger: time
           alias: discharge_evening
-          at: sensor.pv_ctrl_most_expensive_hours_evening_test2
+          at: sensor.pv_ctrl_most_expensive_hours_evening
 
         - trigger: state
           entity_id:
@@ -612,13 +612,13 @@ pv_ctrl_control:
         min_export_price: "{{ states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 }}"
 
         morning_time: >
-          {{ states('sensor.pv_ctrl_most_expensive_hours_morning_test2') | as_datetime(today_at("0:0")) }}
+          {{ states('sensor.pv_ctrl_most_expensive_hours_morning') | as_datetime(today_at("0:0")) }}
         charge_time: >
-          {{ states('sensor.pv_ctrl_cheapest_hours_test2') | as_datetime(today_at("0:0")) }}
+          {{ states('sensor.pv_ctrl_cheapest_hours') | as_datetime(today_at("0:0")) }}
         cheapest_time_end: >
-          {{ (state_attr('sensor.pv_ctrl_most_expensive_hours_morning_test2', 'data') or {}).get('end') }}
+          {{ (state_attr('sensor.pv_ctrl_most_expensive_hours_morning', 'data') or {}).get('end') }}
         evening_time: >
-          {{ states('sensor.pv_ctrl_most_expensive_hours_evening_test2') | as_datetime(today_at("0:0")) }}
+          {{ states('sensor.pv_ctrl_most_expensive_hours_evening') | as_datetime(today_at("0:0")) }}
 
         # Inverter sensor
         soc: "{{ (states('sensor.wattsonic_battery_soc') | float(0) + 0.5) | int }}"
