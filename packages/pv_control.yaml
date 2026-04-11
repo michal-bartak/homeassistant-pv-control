@@ -1215,6 +1215,7 @@ pv_ctrl_control:
         min_pv_forecast_nextday: "{{ states('input_number.pv_ctrl_min_suncast_next_day') | float(1000) }}"
         min_soc_morning: "{{ states('input_number.pv_ctrl_soc_limit_morning') | float(100) }}"
         min_soc_evening: "{{ states('input_number.pv_ctrl_soc_limit_evening') | float(100) }}"
+        min_soc_delayed_charge: "{{ states('input_number.pv_ctrl_charge_delay_min_soc') | float(100) }}"
 
         min_export_price: "{{ states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 }}"
 
@@ -1256,10 +1257,11 @@ pv_ctrl_control:
                 and now() < as_datetime(charge_time)
                 and mode == 'General'
                 and forecast_today > min_pv_forecast_currentday
-                and soc <= 95 %}
+                and soc <= 95
+                and soc > min_soc_delayed_charge %}
             Delayed Charge
 
-          {% elif mode == 'Cheapest Charge' and (soc > 99 or cheapest_time_end is not none and now() >= as_datetime(cheapest_time_end)) %}
+          {% elif mode == 'Cheapest Charge' and (soc > 99 or (cheapest_time_end is not none and now() >= as_datetime(cheapest_time_end))) %}
             General
 
           {% elif mode == 'Delayed Charge' and soc > 99 %}
