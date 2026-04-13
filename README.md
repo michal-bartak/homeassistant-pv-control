@@ -1,8 +1,14 @@
+Recently I noticed several PV automation projects seen the light of day. All of them consider managing of energy accumulation devices (ie hot water tanks). My project focuses solely on battery charge and discharge, based on weather forecast and incoming spot prices. It's a response to my needs after changing flat rate selling price to spot.
+
+While it's implemented with specific dependencies in mind, the article provide general thoughts allowing to adjust for use with any other PV inverter.
+
+> :sparkles: Some parts of code has been proposed by AI. Also text has been corrected with help of AI.
+
 # Introduction
 
 The idea of a household PV plant as a money-making machine was never really accurate, even if advertisements sometimes make it seem that way. Anyone who had that expectation was likely brought back to reality fairly quickly.
 
-In fact, household's PV systems are often only marginally profitable—unless they are also viewed as a hobby. The initial investment is quite high. Larger systems perform better outside the summer season, but they are also more expensive (especially due to batteries). In most cases, the return on investment is not expected earlier than 10 years.
+In fact, household's PV systems are often only marginally profitable - unless they are also viewed as a hobby. The initial investment is quite high. Larger systems perform better outside the summer season, but they are also more expensive (especially due to batteries). In most cases, the return on investment is not expected earlier than 10 years.
 
 ROI depends on several factors. Let’s break them down.
 
@@ -10,7 +16,7 @@ ROI depends on several factors. Let’s break them down.
 
 The most important fact is that the gross price of purchased electricity is several times higher than the price at which electricity is sold. In the Czech Republic, households sell electricity at net prices. While no regulatory costs are applied on the selling side, intermediary companies charge various handling fees, reducing the net income.
 
-At the same time, purchasing electricity includes additional regulatory costs such as distribution, network maintenance, and special taxes—all of which are further increased by VAT.
+At the same time, purchasing electricity includes additional regulatory costs such as distribution, network maintenance, and special taxes - all of which are further increased by VAT.
 
 Here is the evolution of total selling and purchasing prices over the past years:
 
@@ -19,7 +25,7 @@ Here is the evolution of total selling and purchasing prices over the past years
 The ROI (Return on Investment) is built on two main components:
 
 - **PV energy consumed by the household** – This should form the largest portion of ROI. It represents the cost of electricity you did not have to buy thanks to your PV system. The more PV energy you can store and use within the household, the better.
-- **PV energy sold** – Typically, more PV produced energy is sold than utilized, but its total contribution to ROI is significantly smaller.
+- **PV energy sold** – Typically, especially during summer months, more PV produced energy is sold than utilized, but its total contribution to ROI is significantly smaller. Doesn't mean negligible.
 
 Given this, income from sold energy is only a fraction of total ROI. In my household, the ratio was approximately 1:4 in 2025.
 
@@ -41,56 +47,34 @@ The upper graph shows spot prices. Next-day prices are typically published in th
 
 Daily price patterns usually feature two peaks: morning and evening, and a trough around midday. The peaks are typically short, while the midday dip can sometimes last for several hours.
 
-The lower graph shows predicted PV production based on data from Solcast. The forecast is updated multiple times per day, improving accuracy over time.
+The lower graph shows predicted PV production based on data from Solcast. The forecast is updated multiple times per day, improving accuracy over time. Solcast provides prediction for several days ahead giving overview what is comming next, though these are not utilized by this project.
+
+<img src="images/solcast_7d.png" alt="Solcast 7 days forecast" width="60%">
 
 # The Automation Concept
 
 These observations lead to a set of automation rules:
 
 1. Sell energy stored in batteries during peak price periods
-2. Delay battery charging and sell PV production during morning hours
+2. Delay battery charging during morning hours, to sell for good prices
 3. Charge the battery during the cheapest price window
+4. Do not discharge if not enough PV energy is forecasted
+5. Secure minimum energy in battery that is needed for normal household operations at any time
 
-This sounds simple, but requires proper setup. First, your PV inverter must be integrated with Home Assistant in a way that allows control over its operating modes. Available features may depend on the inverter model and firmware version.
+It starts from creation of 3 template sensors, that calculates time windows for charging and discharging. The code incolved for their creation does the most dirty job. the result is utilized by the automation as well as visualization.
+
+They need a few settings:
+<img src="images/config_1.png" alt="Config 1" width="40%">
+
+Sensors are updated every minute, then once start horizon is reached, the particuluar sensor is locked until next midnight. Sensors are also protected against moving the target to the past.
 
 ## Discharge
 
 To sell stored energy, the inverter must be switched to a mode that exports battery energy to the grid. This may be available as a main operating mode or as a scheduled mode (Time of Use, ToU).
 
-Discharging must not result in an energy deficit later. As mentioned, buying electricity is much more expensive than selling it. Therefore, minimum battery charge levels must be maintained.
-
-In my setup:
-- 70% SOC is reserved after evening discharge
-- 25% SOC is reserved after morning discharge
-
-This works well for my household needs.
-
-> It is possible to sell more energy in the evening at the expense of morning discharge. This may be more profitable since evening prices are usually higher. However, splitting discharge into two phases provides a buffer for unexpected evening or night consumption (e.g., washing, gaming).
-
-Energy shortages can also result from poor weather. If low PV production is expected the next day, it is better to keep energy stored rather than sell it.
-
-I use Solcast forecast data for this purpose. It provides daily energy predictions as well as hourly breakdowns. While fine-grained optimization is possible, daily totals are sufficient in my experience.
-
-Discharge is triggered only if the forecasted energy exceeds a defined threshold. But how should this threshold be calculated?
-
-In principle, it needs to cover three things:
-
-1. **Daily household consumption** – the PV production must be sufficient to power the household throughout the day
-2. **Battery recharge** – there must be enough excess energy to recharge the battery back to 100%
-3. **Safety margin** – an additional buffer to account for forecast inaccuracies and to avoid purchasing energy from the grid
-
-The margin is important because PV forecasts are never perfect, and household consumption may vary. Without it, the system may end up buying expensive electricity later.
-
-In practice, this threshold does not need to be calculated with high precision. A conservative estimate based on typical daily consumption and battery size is usually sufficient. In practive I splitted decission making into two separate conditions approximated to:
-
-1. **Predicted PV production tomorrow** - 10kWh - below this value, evening discharge is not triggered
-2. **Predicted PV production today** - 17kWh - below this value, morning discharge is not triggered
+Discharging must not result in an energy deficit later. Therefore no discharge is triggered if no enough PV energy is forecasted as well as minimum battery levels must be maintained. In my setu it makes 70% SOC after evening discharge and 25% SOC reserved after morning discharge.
 
 > Selling energy despite low forecast only makes sense if selling prices exceed buying prices. This does happen occasionally, but not often enough to rely on.
-
-## Cheapest Charge
-
-Charging during the cheapest hours requires no special mode—just the standard “General” mode.
 
 ## Delayed Charge
 
@@ -100,25 +84,27 @@ During this time:
 - The system should behave similarly to General mode, but
 - PV production should prioritize export to the grid over charging the battery.
 
-This is typically called **Feed-in Mode**. If unavailable, limiting the charging current may achieve a similar effect, though Feed-in Mode still allows charging if PV production exceeds export limits.
+This is typically called **Feed-in Mode**. If unavailable, limiting the charging current may help achieving a similar result, though Feed-in Mode still allows charging if PV production exceeds export limits.
 
-> Wattsonic Gen3 with firmware 2.x does not support Feed-in Mode. It was introduced in later firmware versions.
+> Wattsonic Gen3 with firmware 2.x does not provide Feed-in Mode. It was introduced in later firmware versions.
 
-If spot prices drop too low during this period, selling may no longer be profitable. In that case, it is better to start charging the battery earlier to prepare for potential household consumption.
+This period implements several guards:
 
-Discharging mode still can provide energy to the hausehold, in case PV doesn't cover the requirement. However the Delayed Charge phase might take long enough to empty the battery. Because of that I introduced a guard, that disables Delayed Charge if battery SOC drops under predefined limit.
+- it's is activated only if proceeds the morning discharge. Otherwise not enough solar energy forecasted is considered
 
-## Optimal Time Windows
+- in this mode the battery still provides energy to the hausehold, in case PV doesn't cover the requirement. If battery SOC drops to the predefined limit, the mode is interrupted and inverter returns to regular operational mode.
 
-Finally, we need to determine optimal time windows for charging and discharging.
+- if spot prices drop too low during this period, selling does not make sense anymore. It is better to use PV energy charge the battery.
 
-These depend on:
-- The amount of energy to transfer
-- The rate of charging/discharging
+## Cheapest Charge
 
-In practice, these rates vary due to household consumption and PV output. We may assume that the variation is not significant enough to require precise modeling.
+Charging during the cheapest hours requires no special inverter mode - just the standard “General” mode. More important is securing charge window big enough to fully charge battery. During development and testing cycle I introduced some parameters to save from extreme sitatuations:
 
-Therefore, calculations are done approximately, using 15-minute intervals and fixed transfer rate. The result is the start time of each window, while the end is determined by reaching target SOC levels.
+- Chargin End Time - If cheapest hours become later than usual and/or due to bad weather the chargin requires more time, both cases together with forecast unpredictability might lead to situation that battery will never fully charge. This setting effectively shifts the time window back, preventing too late charging.
+
+- Charge Overhead - increases energy demand for charging by given factor. It extrapolates household energy usage during the same hours.
+
+<img src="images/config_2.png" alt="Config 2" width="40%">
 
 # The Package
 
@@ -169,6 +155,10 @@ Following modes are accepted:
 **feedin** - make inverter prefer injecting produced energy to the grid, instead of charging battery. Achieved by limiting charge current. 
 **charge_disabled** - sets charge current to zero (unused)
 **charge_enabled** - sets charge current to maximum (unused)
+**injection_enabled** - Enables injection to the grid
+**injection_disabled** - Disables injection to the grid
+
+Two latest operations are utilized by another - independent - automation that prevents selling energy when its price is below the limit.
 
 **Template Sensors**
 These sensors calculate start and end of time periods, reflecting automation life-cycle.
@@ -189,9 +179,9 @@ All of them must be adapted if you are using a different inverter than Wattsonic
 | Entity                                       | Description |
 |----------------------------------------------|-------------|
 | `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. |
-| `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in real or dry mode, or disable it. Dry-run mode does everything but requesting changes to the inverter settings. It's good to test if the automation phases proceed as expected. |
-| `input_boolean.pv_ctrl_debug`                | Enables or disables recording debug informations to the Home Assistant log |
-| `input_select.pv_ctrl_phase`                 | Tracks the current automation phase. Not intended to be edited manually. Possible phases are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
+| `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
+| `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
+| `input_select.pv_ctrl_phase`                 | Materializes the current automation phase. Not intended to be edited manually. Possible phases are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
 | `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today required to allow the morning discharge |
 | `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow required to allow the evening discharge |
 | `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge (25%) |
@@ -202,8 +192,6 @@ All of them must be adapted if you are using a different inverter than Wattsonic
 | `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
 | `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
 
-<img src="images/config_1.png" alt="Config 1" width="40%">
-<img src="images/config_2.png" alt="Config 2" width="40%">
 
 ---
 - pv_ctrl_charge_forecast_overhead
@@ -233,7 +221,7 @@ The automation make use of following entities, that come from other integrations
 
 The design of the dashboard is a matter of personal preference. This one helps visualize relationships between variables and allows manual control in case the automation behaves unexpectedly (which can happen during development).
 
-Configuration controls are protected by an Edit Mode toggle to prevent accidental changes—especially useful especially on mobile devices.
+Configuration controls are protected by an Edit Mode toggle to prevent accidental changes - especially useful especially on mobile devices.
 
 The top buttons control inverter modes. The five buttons below represent automation phases.
 
@@ -251,17 +239,26 @@ During development, it’s very easy to fall into the “just one more feature�
 - operating fully in the energy/power domain instead of relying on SOC and estimated transfer rates
 - planning additional loads for the next day
 - introducing a “vacation mode” to reflect lower household consumption
-- integrating with a calendar to anticipate changes in usage
+- integrating with a calendar as a provider of anticipated changes in usage
 - incorporating AI to predict household consumption based on historical data
 
 So, is it worth it?
 
-From a learning and development perspective—definitely yes. It’s a great playground for experimenting and improving your setup.
+From a learning and development perspective, maybe the answer is yes. It’s a great playground for experimenting and improving your setup.
 
 From a financial perspective, it’s less clear.
 
-More advanced logic means more complex code, more configuration, and more edge cases to handle—such as vacations, holidays, or unusual household behavior. Higher precision and tighter margins also require more accurate predictions, especially for household consumption, which is inherently difficult to model. In practice, this can even place additional expectations on other household members.
+More advanced logic means more complex code, more configuration, and more edge cases to handle. Higher precision and tighter margins also require more accurate predictions, especially for household consumption, which is inherently difficult to model. In practice, this can even place additional expectations on other household members.
 
 And in the end, the improvement in ROI may be marginal.
 
-That said, it always depends on the specific setup. In some cases, the extra complexity might pay off—but it’s worth considering whether the added effort is justified.
+That said, it always depends on the specific setup. In some cases, the extra complexity might pay off - but it’s worth considering whether the added effort is justified.
+
+# The code
+
+The Home Assistant package is available under Github [link](https://github.com/michal-bartak/homeassistant-pv-control/blob/main/packages/pv_control.yaml)
+
+**Requirements**
+* Wattsonic gen3 integration ([github](https://github.com/GiZMoSK1221/hass-addons))
+* Solcast ([github](https://github.com/BJReplay/ha-solcast-solar))
+* CZ Spot prices ([github](https://github.com/rnovacek/homeassistant_cz_energy_spot_prices))
