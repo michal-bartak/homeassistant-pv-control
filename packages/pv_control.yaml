@@ -126,7 +126,11 @@ pv_ctrl_control:
         - name: "State of Charge"
           default_entity_id: sensor.pv_ctrl_soc
           unique_id: "pv_ctrl_soc"
-          state: "{{ states('sensor.wattsonic_battery_soc') | float(0) / 100 }}"
+          variables:
+            soc: "{{ states('sensor.wattsonic_battery_soc') }}"
+          state: "{{ soc | float(0) / 100 }}"
+          attributes:
+            original_value: "{{ soc }}"
 
         - name: "Solar Forecast Today"
           default_entity_id: sensor.pv_ctrl_solar_forecast_today
@@ -147,9 +151,9 @@ pv_ctrl_control:
 
               {% for val in pv_trimmed %}
                 {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
-              {% set data.prices = data.prices + [obj] %}
+              {% set d.prices = d.prices + [obj] %}
               {% endfor %}
-              {{ data }}
+              {{ d.prices }}
 
         - name: "Solar Forecast Tomorrow"
           default_entity_id: sensor.pv_ctrl_solar_forecast_tomorrow
@@ -170,18 +174,14 @@ pv_ctrl_control:
 
               {% for val in pv_trimmed %}
                 {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
-              {% set data.prices = data.prices + [obj] %}
+              {% set d.prices = d.prices + [obj] %}
               {% endfor %}
-              {{ data }}
-    - triggers:
-        - trigger: time_pattern
-          # This will update every hour
-          minutes: "0"
-      sensor:
+              {{ d.prices }}
+
         - name: "Spot Electricity Prices"
           unique_id: "pv_ctrl_spot_electricity_prices"
           default_entity_id: sensor.pv_ctrl_spot_electricity_prices
-          state: "{{ now() }}"
+          state: "{{ states('sensor.current_spot_electricity_price_15min') }}"
           attributes:
             period: "15 minutes"
             data: >
