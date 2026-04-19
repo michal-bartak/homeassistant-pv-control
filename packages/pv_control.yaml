@@ -5,7 +5,8 @@ pv_ctrl_control:
       icon: mdi:cash-clock
       min: 0
       max: 10000
-      step: 1
+      step: 0.01
+      unit_of_measurement: "CZK/kWh"
       mode: box
     pv_ctrl_min_suncast_current_day:
       name: Min Suncast Current Day
@@ -121,6 +122,78 @@ pv_ctrl_control:
         - Active
 
   template:
+    - sensor:
+        - name: "State of Charge"
+          default_entity_id: sensor.pv_ctrl_soc
+          unique_id: "pv_ctrl_soc"
+          state: "{{ states('sensor.wattsonic_battery_soc') | float(0) / 100 }}"
+
+        - name: "Solar Forecast Today"
+          default_entity_id: sensor.pv_ctrl_solar_forecast_today
+          unique_id: "pv_ctrl_solar_forecast_today"
+          state: "{{ now() }}"
+          attributes:
+            data: |
+              {% set d = namespace(prices=[]) %}
+              {% set pv_data = states.sensor.solcast_pv_forecast_forecast_today.attributes.detailedForecast %}
+              {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
+              {% if nz %}
+                {% set first = pv_data.index(nz[0]) %}
+                {% set last = pv_data.index(nz[-1]) %}
+                {% set pv_trimmed = pv_data[first:last+1] %}
+              {% else %}
+                {% set pv_trimmed = [] %}
+              {% endif %}
+
+              {% for val in pv_trimmed %}
+                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
+              {% set data.prices = data.prices + [obj] %}
+              {% endfor %}
+              {{ data }}
+
+        - name: "Solar Forecast Tomorrow"
+          default_entity_id: sensor.pv_ctrl_solar_forecast_tomorrow
+          unique_id: "pv_ctrl_solar_forecast_tomorrow"
+          state: "{{ now() }}"
+          attributes:
+            data: |
+              {% set d = namespace(prices=[]) %}
+              {% set pv_data = states.sensor.solcast_pv_forecast_forecast_tomorrow.attributes.detailedForecast %}
+              {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
+              {% if nz %}
+                {% set first = pv_data.index(nz[0]) %}
+                {% set last = pv_data.index(nz[-1]) %}
+                {% set pv_trimmed = pv_data[first:last+1] %}
+              {% else %}
+                {% set pv_trimmed = [] %}
+              {% endif %}
+
+              {% for val in pv_trimmed %}
+                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
+              {% set data.prices = data.prices + [obj] %}
+              {% endfor %}
+              {{ data }}
+    - triggers:
+        - trigger: time_pattern
+          # This will update every hour
+          minutes: "0"
+      sensor:
+        - name: "Spot Electricity Prices"
+          unique_id: "pv_ctrl_spot_electricity_prices"
+          default_entity_id: sensor.pv_ctrl_spot_electricity_prices
+          state: "{{ now() }}"
+          attributes:
+            period: "15 minutes"
+            data: >
+              {% set data = namespace(prices=[]) %}
+              {% for key, val in states.sensor.current_spot_electricity_price_15min.attributes.items() %}
+                {% if key | as_datetime(0) != 0 %}
+                  {% set obj  = { "time" : key, "price" : val | round(7) } %}
+                  {% set data.prices = data.prices + [obj] %}
+                {% endif %}
+              {% endfor %}
+              {{ data.prices }}
+
     - triggers:
         - trigger: state
           entity_id:
@@ -145,10 +218,10 @@ pv_ctrl_control:
           {% if locked %}
             {{ old_val | combine({'locked': locked})}}
           {% else %}
-            {% set price_data = state_attr('sensor.today_spot_electricity_prices', 'data') or [] %}
+            {% set price_data = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'data') or [] %}
             {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today', 'detailedForecast') or [] %}
             {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
-            {% set min_export_price = states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 %}
+            {% set min_export_price = states('input_number.pv_ctrl_min_export_price') | float(0) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
             {% set soc = states('sensor.wattsonic_battery_soc') | float(0) / 100 %}
 
@@ -304,7 +377,7 @@ pv_ctrl_control:
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
             {% set kwh_per_soc      = battery_capacity / 100 %}
 
-            {% set prices           = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+            {% set prices           = state_attr('sensor.pv_ctrl_spot_electricity_prices','data') or [] %}
             {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
 
             {% set start_hour = 5 %}
@@ -412,7 +485,7 @@ pv_ctrl_control:
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
             {% set kwh_per_soc      = battery_capacity / 100 %}
 
-            {% set prices           = state_attr('sensor.today_spot_electricity_prices','data') or [] %}
+            {% set prices           = state_attr('sensor.pv_ctrl_spot_electricity_prices','data') or [] %}
             {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
 
             {% set start_hour = 14 %}
@@ -611,7 +684,7 @@ pv_ctrl_control:
         min_soc_evening: "{{ states('input_number.pv_ctrl_soc_limit_evening') | float(100) }}"
         min_soc_delayed_charge: "{{ states('input_number.pv_ctrl_charge_delay_min_soc') | float(100) }}"
 
-        min_export_price: "{{ states('input_number.pv_ctrl_min_export_price') | float(0) / 1000 }}"
+        min_export_price: "{{ states('input_number.pv_ctrl_min_export_price') | float(0) }}"
 
         morning_time: >
           {{ states('sensor.pv_ctrl_most_expensive_hours_morning') | as_datetime(today_at("0:0")) }}
