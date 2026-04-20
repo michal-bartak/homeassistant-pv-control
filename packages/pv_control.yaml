@@ -1,7 +1,7 @@
 pv_ctrl_control:
   input_number:
     pv_ctrl_min_export_price:
-      name: Min Export Price (for 1MWh)
+      name: Min Export Price
       icon: mdi:cash-clock
       min: 0
       max: 10000
@@ -77,13 +77,6 @@ pv_ctrl_control:
       min: 0
       max: 100
       mode: box
-    pv_ctrl_time_granularity:
-      name: Time Granularity
-      icon: mdi:time-sand
-      unit_of_measurement: "min"
-      min: 0
-      max: 120
-      mode: box
 
   input_datetime:
     pv_ctrl_charge_delay_time_limit:
@@ -126,20 +119,19 @@ pv_ctrl_control:
         - name: "State of Charge"
           default_entity_id: sensor.pv_ctrl_soc
           unique_id: "pv_ctrl_soc"
-          variables:
-            soc: "{{ states('sensor.wattsonic_battery_soc') }}"
-          state: "{{ soc | float(0) / 100 }}"
-          attributes:
-            original_value: "{{ soc }}"
+          state: "{{ states('sensor.wattsonic_battery_soc') | float(0) }}"
+          unit_of_measurement: "%"
 
         - name: "Solar Forecast Today"
           default_entity_id: sensor.pv_ctrl_solar_forecast_today
           unique_id: "pv_ctrl_solar_forecast_today"
-          state: "{{ now() }}"
+          state: "{{ states('sensor.solcast_pv_forecast_forecast_today') }}"
+          unit_of_measurement: kWh
           attributes:
+            interval: "00:30:00"
             data: |
               {% set d = namespace(prices=[]) %}
-              {% set pv_data = states.sensor.solcast_pv_forecast_forecast_today.attributes.detailedForecast %}
+              {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today', 'detailedForecast') %}
               {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
               {% if nz %}
                 {% set first = pv_data.index(nz[0]) %}
@@ -158,11 +150,13 @@ pv_ctrl_control:
         - name: "Solar Forecast Tomorrow"
           default_entity_id: sensor.pv_ctrl_solar_forecast_tomorrow
           unique_id: "pv_ctrl_solar_forecast_tomorrow"
-          state: "{{ now() }}"
+          state: "{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }}"
+          unit_of_measurement: kWh
           attributes:
+            interval: "00:30:00"
             data: |
               {% set d = namespace(prices=[]) %}
-              {% set pv_data = states.sensor.solcast_pv_forecast_forecast_tomorrow.attributes.detailedForecast %}
+              {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_tomorrow', 'detailedForecast') %}
               {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
               {% if nz %}
                 {% set first = pv_data.index(nz[0]) %}
@@ -182,8 +176,9 @@ pv_ctrl_control:
           unique_id: "pv_ctrl_spot_electricity_prices"
           default_entity_id: sensor.pv_ctrl_spot_electricity_prices
           state: "{{ states('sensor.current_spot_electricity_price_15min') }}"
+          unit_of_measurement: kWh
           attributes:
-            period: "15 minutes"
+            interval: "00:15:00"
             data: >
               {% set data = namespace(prices=[]) %}
               {% for key, val in states.sensor.current_spot_electricity_price_15min.attributes.items() %}
@@ -216,43 +211,28 @@ pv_ctrl_control:
             else old_val.locked | default(false) }}
         new_val: >
           {% if locked %}
-            {{ old_val | combine({'locked': locked})}}
+            {{ old_val | combine({'locked': locked}) }}
           {% else %}
-            {% set price_data = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'data') or [] %}
-            {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_today', 'detailedForecast') or [] %}
+            {% set timewindow_limit = today_at(states('input_datetime.pv_ctrl_charge_delay_time_limit')) %}
+            {% set price_data       = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'data') or [] %}
+            {% set price_interval   = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'interval') | as_timedelta %}
+            {% set pv_data          = state_attr('sensor.pv_ctrl_solar_forecast_today', 'data') or [] %}
+            {% set pv_data_interval = state_attr('sensor.pv_ctrl_solar_forecast_today', 'interval') | as_timedelta %}
             {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
             {% set min_export_price = states('input_number.pv_ctrl_min_export_price') | float(0) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
-            {% set soc = states('sensor.wattsonic_battery_soc') | float(0) / 100 %}
-
+            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) / 100 %}
             {% set to_charge = battery_capacity * (1 - soc) %}
-            
-            {% set pv_data_interval = as_datetime(pv_data[1].period_start) - as_datetime(pv_data[0].period_start) %}
-            {% set pv_interval_multiplier = pv_data_interval.total_seconds() / 3600 %}
 
-            {% set price_interval = as_datetime(price_data[1].time) - as_datetime(price_data[0].time) %}
             {% set price_interval_multiplier = price_interval.total_seconds() / 3600 %}
-            
-            {% set charge_cap_per_price_interval = charge_power_cap * price_interval_multiplier * pv_interval_multiplier %}
-
-            {% set time_upper_boundary = today_at(states('input_datetime.pv_ctrl_charge_delay_time_limit')) %}
+            {% set charge_cap_per_price_interval = charge_power_cap * price_interval_multiplier %}
 
             {# --- filter today's prices --- #}
             {% set prices = price_data
               | selectattr('time','defined')
-              | selectattr('time', '<=', (time_upper_boundary + price_interval).isoformat())
+              | selectattr('time', '<=', (timewindow_limit + price_interval).isoformat())
               | list
             %}
-
-            {# strip leading and trailing zero PV production #}
-            {% set nz = pv_data | selectattr('value','ne',0) | list %}
-            {% if nz %}
-              {% set first = pv_data.index(nz[0]) %}
-              {% set last = pv_data.index(nz[-1]) %}
-                {% set pv_trimmed = pv_data[first:last+1] %}
-            {% else %}
-              {% set pv_trimmed = [] %}
-            {% endif %}
 
             {# --- merge (price-driven) --- #}
             {% set ns = namespace(data=[], started=false) %}
@@ -265,26 +245,19 @@ pv_ctrl_control:
               {% set pv_ns = namespace(val=0) %}
 
               {# find matching PV slot #}
-              {% for f in pv_trimmed %}
-                {% set pt = as_datetime(f.period_start) %}
+              {% for f in pv_data %}
+                {% set pt = as_datetime(f.time) %}
                 {% if pt <= t < pt + pv_data_interval %}
-                  {% set pv_ns.val = f.pv_estimate | float(0) %}
+                  {% set pv_ns.val = f.energy | float(0) %}
                   {% break %}
                 {% endif %}
               {% endfor %}
 
-              {# skip leading zero PV #}
-              {% if not ns.started and pv_ns.val == 0 %}
-                {% continue %}
-              {% endif %}
-
-              {% set ns.started = true %}
-
               {% set ns.data = ns.data + [{
                 'time': t,
                 'price': price,
-                'pv_estimate': pv_ns.val * pv_interval_multiplier,
-                'pv_price': pv_ns.val * pv_interval_multiplier * price
+                'pv_estimate': pv_ns.val,
+                'pv_price': pv_ns.val * price
               }] %}
             {% endfor %}
 
@@ -299,11 +272,12 @@ pv_ctrl_control:
                 {% set item = ns.data[j] %}
 
                 {# usable power is limited by charger #}
-                {% set energy = [item.pv_estimate, charge_cap_per_price_interval] | min -%}
+                {% set usable_power = [item.pv_estimate, charge_power_cap] | min -%}
+                {% set energy = usable_power * price_interval_multiplier -%}
 
                 {% set en_to_process = en_cover if en_cover < energy else energy -%}
                 {% set en_cover = en_cover - en_to_process -%}
-                
+
                 {% set energy_ns.val = energy_ns.val + en_to_process -%}
                 {% set cost_ns.val = cost_ns.val + (en_to_process * item.price) -%}
 
@@ -353,7 +327,6 @@ pv_ctrl_control:
             # - sensor.solcast_pv_forecast_forecast_today
             - input_number.pv_ctrl_soc_limit_morning
             - input_number.pv_ctrl_discharge_velocity
-            - input_number.pv_ctrl_time_granularity
             - input_number.pv_ctrl_battery_capacity
         - trigger: time_pattern
           alias: time_trigger
@@ -372,13 +345,13 @@ pv_ctrl_control:
           {% else %}
 
             {% set reserve          = states('input_number.pv_ctrl_soc_limit_morning') | float(100) %}
-            {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
             {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
-            {% set kwh_per_soc      = battery_capacity / 100 %}
 
             {% set prices           = state_attr('sensor.pv_ctrl_spot_electricity_prices','data') or [] %}
-            {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
+            {% set price_interval   = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'interval') | as_timedelta('0:15:00') %}
+
+            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) %}
 
             {% set start_hour = 5 %}
             {% set end_hour   = 12 %}
@@ -390,10 +363,10 @@ pv_ctrl_control:
             %}
 
             {% set sellable_soc = max(0, soc - reserve) %}
-            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+            {% set sellable_kwh = sellable_soc * (battery_capacity / 100) %}
 
             {% set hours = sellable_kwh / discharge_power %}
-            {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+            {% set window = ((hours * 3600) / price_interval.total_seconds()) | round(0, 'ceil') | int %}
 
             {% set today_prices = prices
               | selectattr('time','defined')
@@ -426,14 +399,14 @@ pv_ctrl_control:
               {% endfor %}
 
               {% set start = as_datetime(prices[ns.best_index].time) %}
-              
+
               {# prevents moving the target incl jumping from future to the past #}
               {% if old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
                 {{ old_val }}
               {% else %}
                 {{ dict(
                     start  = start.isoformat(),
-                    end    = (start + timedelta(minutes=window*time_granularity)).isoformat(),
+                    end    = (start + price_interval).isoformat(),
                     locked = locked
                   ) }}
               {% endif %}
@@ -460,7 +433,6 @@ pv_ctrl_control:
         - trigger: state
           entity_id:
             - input_number.pv_ctrl_soc_limit_evening
-            - input_number.pv_ctrl_time_granularity
             - input_number.pv_ctrl_discharge_velocity
             - input_number.pv_ctrl_battery_capacity
         - trigger: time_pattern
@@ -480,13 +452,13 @@ pv_ctrl_control:
             {{ old_val | combine({'locked': locked})}}
           {% else %}
             {% set reserve          = states('input_number.pv_ctrl_soc_limit_evening') | float(100) %}
-            {% set time_granularity = states('input_number.pv_ctrl_time_granularity') | float(60) %}
             {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
-            {% set kwh_per_soc      = battery_capacity / 100 %}
 
             {% set prices           = state_attr('sensor.pv_ctrl_spot_electricity_prices','data') or [] %}
-            {% set soc              = states('sensor.wattsonic_battery_soc') | float(0) %}
+            {% set price_interval   = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'interval') | as_timedelta('0:15:00') %}
+
+            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) %}
 
             {% set start_hour = 14 %}
             {% set end_hour   = 25 %}
@@ -498,10 +470,10 @@ pv_ctrl_control:
             %}
 
             {% set sellable_soc = max(0, soc - reserve) %}
-            {% set sellable_kwh = sellable_soc * kwh_per_soc %}
+            {% set sellable_kwh = sellable_soc * (battery_capacity / 100) %}
 
             {% set hours = sellable_kwh / discharge_power %}
-            {% set window = (hours / (time_granularity / 60)) | round(0,'ceil') | int %}
+            {% set window = ((hours * 3600) / price_interval.total_seconds()) | round(0, 'ceil') | int %}
 
             {% set today_prices = prices
               | selectattr('time','defined')
@@ -534,14 +506,14 @@ pv_ctrl_control:
               {% endfor %}
 
               {% set start = as_datetime(prices[ns.best_index].time) %}
-              
+
               {# prevents moving the target, incl jumping from future to the past #}
               {% if old_val.start is not none and start < now() and now() < as_datetime(old_val.start) %}
                 {{ old_val }}
               {% else %}
                 {{ dict(
                     start  = start.isoformat(),
-                    end    = (start + timedelta(minutes=window*time_granularity)).isoformat(),
+                    end    = (start + price_interval).isoformat(),
                     locked = locked
                   ) }}
               {% endif %}
@@ -630,12 +602,31 @@ pv_ctrl_control:
 
             # 🔹 CHARGE ENABLED
             - conditions: "{{ mode == 'charge_enabled' }}"
-              alias: Chage enabled
+              alias: Charge enabled
               sequence:
                 - alias: "Enable battery charge"
                   action: script.wattsonic_set_charge_current_limit
                   data:
                     limit: 200
+
+            # 🔹 ENABLE INJECTTION TO GRID
+            # With limit of 4.2kW to prevent exceeded agreed limit
+            - conditions: "{{ mode == 'injection_enabled' }}"
+              alias: Enable injection to the grid
+              sequence:
+                - alias: "Call Wattsonic integration script to enable injection to grid"
+                  action: script.wattsonic_set_grid_injection_power_limit_setting
+                  data:
+                    limit: 42
+
+            # 🔹 DISABLE INJECTTION TO GRID
+            - conditions: "{{ mode == 'injection_disabled' }}"
+              alias: Injection disabled
+              sequence:
+                - alias: "Call Wattsonic integration script to disable injection to grid"
+                  action: script.wattsonic_set_grid_injection_power_limit_setting
+                  data:
+                    limit: 0
 
           default:
             - stop: "Unknown mode"
@@ -720,7 +711,7 @@ pv_ctrl_control:
           {% elif mode == 'Morning Discharge' and soc <= min_soc_morning %}
             General
 
-          {% elif now() >= as_datetime(morning_time) 
+          {% elif now() >= as_datetime(morning_time)
                 and now() < as_datetime(charge_time)
                 and mode == 'General'
                 and forecast_today > min_pv_forecast_currentday
@@ -817,8 +808,54 @@ pv_ctrl_control:
             data:
               message: >-
                 mode: mode {{ mode }}, next_mode {{ next_mode }}, trigger {{ trigger.idx }} - {{ trigger.alias }} - {{ trigger.entity_id }},
-                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }}, 
+                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }},
                 current_price {{ current_price }}, min_export_price {{ min_export_price  }}, soc {{ soc }},
                 min_soc_morning {{ min_soc_morning  }}, min_soc_evening {{ min_soc_evening  }}
+              logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
+              level: warning
+
+    - id: pv_ctrl_prevent_export_on_negative_price
+      alias: Prevent export on negative price
+      mode: single
+      triggers:
+        - trigger: state
+          entity_id:
+            - sensor.pv_ctrl_spot_electricity_prices
+            - input_number.pv_ctrl_min_export_price
+          to: null
+      variables:
+        price_limit: {{ states('input_number.pv_ctrl_min_export_price') }}
+        current_price: {{ states('sensor.pv_ctrl_spot_electricity_prices') }}
+        injection_enabled: {{ price_limit | float(0) < current_price | float(0) }}
+      actions:
+        - if:
+            - condition: state
+              entity_id: input_select.pv_ctrl_mode
+              state: "Active"
+            - condition: template
+              value_template: {{ injection_enabled and is_number(price_limit) and is_number(current_price) }}
+          then:
+            - action: script.pv_ctrl_inverter
+              data:
+                mode: injection_enabled
+          else:
+            - action: script.pv_ctrl_inverter
+              data:
+                mode: injection_disabled
+
+        - if:
+            - condition: state
+              entity_id: input_select.pv_ctrl_mode
+              state:
+                - "Active"
+                - "Dry Run"
+            - condition: state
+              entity_id: input_boolean.pv_ctrl_debug
+              state: "on"
+          then:
+            action: system_log.write
+            data:
+              message: >-
+                injection_enabled: {{ injection_enabled }}, current_price {{ current_price }}, price_limit {{ price_limit }}
               logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
               level: warning

@@ -39,15 +39,15 @@ This together introduces four phases:
 
 > ??? To sell stored energy, the inverter must be switched to a mode that exports battery energy to the grid. This may be available as a main operating mode or as a scheduled mode (Time of Use, ToU).
 
-While it could be limited to single discharge in the morning, split into two has benefits:
+While it could be limited to single discharge, split into two has benefits:
 * prices during evening hours are ussually a bit higher
 * Due to narrowness of peaks it's better to share energy over two peaks
 * split into two gives better margin management
-* morning PV forecast allows last minute skip of morning discharge
+* morning PV forecast allows last minute decission to skip the morning discharge
 
 Discharging must not result in an energy deficit later. Therefore no discharge is triggered if not enough PV energy is forecasted. At the same time a minimum battery levels must be maintained. In my setup it makes 25% SOC reserved after morning discharge together with minimum of 17kWh forecasted energy or 70% SOC after evening discharge and 13 kWh of forecasted PV energy next day.
 
-The exact setup might differ from installation to installation. It must be set with safe margin to avoid buying energy if not enough sunlight.
+The setting of edge conditions might differ from installation to installation. It must be set with safe margin to avoid buying energy, for insuficient sunlight weather.
 
 ## Delayed Charge
 
@@ -59,11 +59,11 @@ During this time:
 
 This period implements several guards:
 
-- it's activated only if proceeds the morning discharge. It comes from assumption that limted forecasted energy might lead to insufficient battery charge, thus the operation is not worth it.
+- it's activated only if proceeds the morning discharge. It comes from assumption that, if discharge has been skipped, then it's gonna be no enough PV energy to play with.
 
 - during this period, the battery still provides energy to the hausehold, in case PV doesn't cover the needs. If battery SOC drops to the predefined limit, the mode is interrupted and inverter returns to regular operational mode, securing battery charge from PV.
 
-- if spot prices drop too low during this period, selling does not make sense anymore. It is better to use PV energy to charge the battery.
+- if spot prices drop undel limit, selling does not make sense anymore. Instead of suppressing PV production, it is better to use it to charge the battery.
 
 > ??? This mode might be called **Feed-in Mode**. If unavailable, limiting the charging current may help achieving a similar result, though Feed-in Mode still allows charging if PV production exceeds export limits.
 
@@ -81,73 +81,16 @@ Charging during the cheapest hours requires no special inverter mode - just the 
 
 # The Package
 
-For no better option, the entire solution is implemented as a Home Assistant package, and it depends on some external components.
+For no deployment better option, the entire solution is implemented as a Home Assistant package:
 
-```mermaid
-flowchart
+![alt text](images/diagram.svg)
 
-        subgraph ext [" "]
-            direction LR
-                sc[Solcast]
-                sp[Spot Prices]
-                inv[Inverter]
-        end
-
-        subgraph ha [PV Control Package]
-            ts[Template Sensors] --> a[Automation]
-            cnf[Config Entities] --> a
-            ps[Proxy Sensors] --> a[Automation]
-            a <--> as["Automation State"]
-            a -->|call| scr[Scripts]
-            scr --> inv
-            inv --> ps
-            sc --> ps
-            sp --> ps
-        end
-
-style ext fill:white,stroke-width:0px
-```
-
-**Template Sensors**
-These sensors calculate start and end of time periods, reflecting automation life-cycle.
-
-- `sensor.pv_ctrl_most_expensive_hours_morning` – Start time of morning discharge
-- `sensor.pv_ctrl_most_expensive_hours_afternoon` – Start time of evening discharge
-- `sensor.pv_ctrl_cheapest_hours` – Start time of cheapest charging window
-
-These sensors stores additional data under attributes.data key. The information is used for the internal logic as well as for dashboard presentation
-
-**Prices Sensor**
-This sensor provides array of today's and tomorrow spot prices. unlike in original Czech spot prices integration, it organizes data into an array, rather that values assigned to volatile keys. Such an structure is better for processing. It also plays a role of the proxy, allowing to implement different spot pricing providers. The data are stored in `attributes.data` as `[{time1: val1}, {time2, val2}, {timen: valn}]`, where time is provided as ISO formatted string and value represent energy in kWh.
-
-**Automation State and Config Entities**
-
-Both are implemented as `input` entities. 
-
-Automation state materializes state of the automation logic.
-
-Config Entities provides option to customize and control the automation.
-
-
-| Entity                                       | Description |
-|----------------------------------------------|-------------|
-| `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. It's especially important for mobile views, where current HA UI makes an accidental change of parameters more then likely |
-| `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
-| `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
-| `input_select.pv_ctrl_phase`                 | Materializes and provides the current automation phase. Not intended to be edited manually. Possible values are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
-| `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today; required for the morning discharge |
-| `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow; required for the evening discharge |
-| `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge |
-| `input_number.pv_ctrl_soc_limit_evening`    | SOC limit for evening discharge |
-| `input_number.pv_ctrl_min_export_price`     | Maximum energy price (per kWh), that prevents exporting energy (e.g., 0.25 CZK). |
-| `input_number.pv_ctrl_charge_velocity`      | Maximum charging power, the velocity the battery can be charged with. Used to cap PV energy provided by Solcast |
-| `input_number.pv_ctrl_discharge_velocity`   | Maximum discharge power, used to calculate a time needed to discharge battery to requested SOC |
-| `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
-| `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
-
+**Proxy Sensors**
+Consider them as an API between 3rd party integration sensors, respresenting state of inverter, solar forecast and prices. Thanks to this approach, the code never references 3rd party sensors, being independent from their data format. Also, in case of replacing integrations, it's enough to adjust proxy sensors.
 
 **Script**
-The `script.pv_ctrl_inverter` is a single script, parametrized to implement inverter-specific commands. It's called by the automation. It might be used for manual control of the automation or inverter from dashboard.
+Like proxy sensors, the `script.pv_ctrl_inverter` plays a role of the proxy for calling the solar inverter.
+It's a single, but paramterized script, that implements inverter-specific commands.
 
 Example:
 ```yaml
@@ -167,7 +110,37 @@ Following modes are accepted:
 
 Two latest operations are utilized by another - independent - automation that prevents selling energy when its price is below configured limit.
 
-**Automation**
+**TimeWindow Sensors**
+These template sensors calculate start and end of charging and discharging time periods for the current day
+
+- `sensor.pv_ctrl_most_expensive_hours_morning` – time of morning discharge
+- `sensor.pv_ctrl_most_expensive_hours_afternoon` – time of evening discharge
+- `sensor.pv_ctrl_cheapest_hours` – time of cheapest charging window
+
+These sensors store additional data under attributes.data key. The results are used by automation as well as are presented on the dashboard.
+
+**Automation State and Config Entities**
+
+Both are implemented as `input` entities. Automation state materializes state of the automation logic.Config Entities provide option to customize and control the automation.
+
+
+| Entity                                       | Description |
+|----------------------------------------------|-------------|
+| `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. It's especially important for mobile views, where current HA UI makes an accidental change of parameters more then likely |
+| `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
+| `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
+| `input_select.pv_ctrl_phase`                 | Materializes and provides the current automation phase. Not intended to be edited manually. Possible values are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
+| `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today; required for the morning discharge |
+| `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow; required for the evening discharge |
+| `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge |
+| `input_number.pv_ctrl_soc_limit_evening`    | SOC limit for evening discharge |
+| `input_number.pv_ctrl_min_export_price`     | Maximum energy price (per kWh), that prevents exporting energy (e.g., 0.25 CZK). |
+| `input_number.pv_ctrl_charge_velocity`      | Maximum charging power, the velocity the battery can be charged with. Used to cap PV energy provided by Solcast |
+| `input_number.pv_ctrl_discharge_velocity`   | Maximum discharge power, used to calculate a time needed to discharge battery to requested SOC |
+| `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
+| `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
+
+**The Automation**
 Finally, the `automation.pv_ctrl_executor` is the core component that makes decissions based on its current state and inputs provided by sensors.
 
 ## External Entities
@@ -229,15 +202,14 @@ That said, it always depends on the specific setup. In some cases, the extra com
 
 # The code
 
-The Home Assistant package is available under Github [link](https://github.com/michal-bartak/homeassistant-pv-control/blob/main/packages/pv_control.yaml)
+The Home Assistant package is available under Github [link](https://github.com/michal-bartak/homeassistant-pv-control/blob/main/packages/pv_control.yaml).
+In case you are not familiar with HA packages, here is the [documentation](https://www.home-assistant.io/docs/configuration/packages/).
 
 **Requirements**
-* Wattsonic gen3 integration ([github](https://github.com/GiZMoSK1221/hass-addons))
-* Solcast ([github](https://github.com/BJReplay/ha-solcast-solar))
-* CZ Spot prices ([github](https://github.com/rnovacek/homeassistant_cz_energy_spot_prices))
+* Wattsonic gen3 integration by GiZMoSK ([GitHub](https://github.com/GiZMoSK1221/hass-addons))
+* Solcast ([GitHub](https://github.com/BJReplay/ha-solcast-solar), [HA forum](https://community.home-assistant.io/t/wattsonic-photovoltaic-power-plant-fve-integration/406135))
+* CZ Spot prices ([GitHub](https://github.com/rnovacek/homeassistant_cz_energy_spot_prices))
 
 > :exclamation: It's important to maintain normalized unit magnitude for all sensors and input values: kW / kWh
 
-Reconfiguring for other coverters is possible. It requires to adjust the script to make it control the inverter, as well as replace SOC sensor in template sensors and automation.
-
-Using another Spot prices provider would require rewriting Spot Prices template sensor.
+Reconfiguring for other coverters is possible. It requires to adjust the script and proxy sensors, maintaining the same input/output behavior.
