@@ -5,6 +5,8 @@ After A year or so of having photovoltaic installation (PV) and pretty good flat
 
 The solution does not implement automation of activating household appliances, that accumulates energy during cheapest periods. It correlates electricity spot prices with solar exposure forecast to find the best time frames to sell the energy as well as charge battery.
 
+> :exclamation: It's important to be aware that repeatable charging and discharging battery reflects into its wear. Whatch out discharge velocity (C-rate). Set the inverter for discharge to be within 0.3-0.7C range.
+
 # Understanding PV Plant ROI
 
 > :bulb: the information below is based on Central European market. Might differ in other parts of the world.
