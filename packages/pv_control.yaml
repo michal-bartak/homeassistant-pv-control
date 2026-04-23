@@ -1,5 +1,13 @@
 pv_ctrl_control:
   input_number:
+    pv_ctrl_solcast_forecast_balance:
+      name: Solcast Balance
+      icon: mdi:scale-balance
+      unit_of_measurement: "%"
+      min: -100
+      max: 100
+      step: 1
+      mode: slider
     pv_ctrl_min_export_price:
       name: Min Export Price
       icon: mdi:cash-clock
@@ -142,7 +150,7 @@ pv_ctrl_control:
               {% endif %}
 
               {% for val in pv_trimmed %}
-                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
+                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate / 2, "energy_10" : val.pv_estimate10 / 2 , "energy_90" : val.pv_estimate90 / 2 } %}
               {% set d.prices = d.prices + [obj] %}
               {% endfor %}
               {{ d.prices }}
@@ -167,7 +175,7 @@ pv_ctrl_control:
               {% endif %}
 
               {% for val in pv_trimmed %}
-                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate, "energy_10" : val.pv_estimate10 , "energy_90" : val.pv_estimate90 } %}
+                {% set obj  = { "time" : val.period_start.isoformat(), "energy" : val.pv_estimate / 2, "energy_10" : val.pv_estimate10  / 2, "energy_90" : val.pv_estimate90 / 2} %}
               {% set d.prices = d.prices + [obj] %}
               {% endfor %}
               {{ d.prices }}
@@ -195,6 +203,7 @@ pv_ctrl_control:
             - input_number.pv_ctrl_battery_capacity
             - input_number.pv_ctrl_charge_velocity
             - input_number.pv_ctrl_charge_forecast_overhead
+            - input_number.pv_ctrl_solcast_forecast_balance
             - input_datetime.pv_ctrl_charge_delay_time_limit
         - trigger: time_pattern
           alias: time_trigger
@@ -222,6 +231,7 @@ pv_ctrl_control:
             {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
             {% set charge_overhead  = states('input_number.pv_ctrl_charge_forecast_overhead') | float(0) / 100 + 1 %}
             {% set timewindow_limit = today_at(states('input_datetime.pv_ctrl_charge_delay_time_limit')) %}
+            {% set solcast_balance  = states('input_number.pv_ctrl_solcast_forecast_balance') | int(0) / 100 %}
 
             {% set to_charge = battery_capacity * (1 - soc) * charge_overhead %}
 
@@ -249,7 +259,9 @@ pv_ctrl_control:
               {% for f in pv_data %}
                 {% set pt = as_datetime(f.time) %}
                 {% if pt <= t < pt + pv_data_interval %}
-                  {% set pv_ns.val = f.energy | float(0) %}
+                  {% set pv_ns.val = f.energy + solcast_balance * (f.energy - f.energy_10) 
+                                    if solcast_balance < 0 else 
+                                    f.energy + solcast_balance * (f.energy_90 - f.energy) %}
                   {% break %}
                 {% endif %}
               {% endfor %}
@@ -311,7 +323,7 @@ pv_ctrl_control:
           value_template: "{{ not (locked and old_val.locked)}}"
       sensor:
         - default_entity_id: sensor.pv_ctrl_cheapest_hours
-          name: Cheapest Hours Test
+          name: Cheapest Hours
           unique_id: pv_ctrl_cheapest_hours
           device_class: timestamp
           icon: mdi:cash-clock
@@ -419,7 +431,7 @@ pv_ctrl_control:
           value_template: "{{ not (locked and old_val.locked)}}"
       sensor:
         - default_entity_id: sensor.pv_ctrl_most_expensive_hours_morning
-          name: Most Expensive Hours Morning Test2
+          name: Most Expensive Hours Morning
           unique_id: pv_ctrl_most_expensive_hours_morning
           device_class: timestamp
           icon: mdi:cash-clock
@@ -525,7 +537,7 @@ pv_ctrl_control:
           value_template: "{{ not (locked and old_val.locked) }}"
       sensor:
         - default_entity_id: sensor.pv_ctrl_most_expensive_hours_evening
-          name: Most Expensive Hours Evening Test2
+          name: Most Expensive Hours Evening
           unique_id: pv_ctrl_most_expensive_hours_evening
           device_class: timestamp
           icon: mdi:cash-clock
@@ -540,7 +552,7 @@ pv_ctrl_control:
       alias: PV Inverter Control
       description: Master control script for PV Inverter
       icon: mdi:solar-power
-      mode: single
+      mode: queued
 
       fields:
         mode:
@@ -807,7 +819,7 @@ pv_ctrl_control:
             data:
               message: >-
                 mode: mode {{ mode }}, next_mode {{ next_mode }}, trigger {{ trigger.idx }} - {{ trigger.alias }} - {{ trigger.entity_id }},
-                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }},
+                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }}, 
                 current_price {{ current_price }}, min_export_price {{ min_export_price  }}, soc {{ soc }},
                 min_soc_morning {{ min_soc_morning  }}, min_soc_evening {{ min_soc_evening  }}
               logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
@@ -815,7 +827,7 @@ pv_ctrl_control:
 
     - id: pv_ctrl_prevent_export_on_negative_price
       alias: Prevent Export On Negative Price
-      mode: single
+      mode: queued
       triggers:
         - trigger: state
           entity_id:
@@ -825,22 +837,26 @@ pv_ctrl_control:
       variables:
         price_limit: "{{ states('input_number.pv_ctrl_min_export_price') }}"
         current_price: "{{ states('sensor.pv_ctrl_spot_electricity_prices') }}"
-        injection_enabled: "{{ price_limit | float(0) < current_price | float(0) }}"
+        valid_input: "{{ is_number(price_limit) and is_number(current_price) }}"
+        injection_enabled: "{{ valid_input and price_limit < current_price }}"
+
       actions:
         - if:
             - condition: state
               entity_id: input_select.pv_ctrl_mode
               state: "Active"
             - condition: template
-              value_template: "{{ injection_enabled and is_number(price_limit) and is_number(current_price) }}"
+              value_template: "{{ valid_input }}"
           then:
-            - action: script.pv_ctrl_inverter
-              data:
-                mode: injection_enabled
-          else:
-            - action: script.pv_ctrl_inverter
-              data:
-                mode: injection_disabled
+            - if: "{{ injection_enabled }}"
+              then:
+                - action: script.pv_ctrl_inverter
+                  data:
+                    mode: injection_enabled
+              else:
+                - action: script.pv_ctrl_inverter
+                  data:
+                    mode: injection_disabled
 
         - if:
             - condition: state
@@ -855,6 +871,6 @@ pv_ctrl_control:
             action: system_log.write
             data:
               message: >-
-                injection_enabled: {{ injection_enabled }}, current_price {{ current_price }}, price_limit {{ price_limit }}
+                injection_enabled: {{ injection_enabled }}, valid_input: {{ valid_input }}, current_price {{ current_price }}, price_limit {{ price_limit }}
               logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
               level: warning

@@ -1,29 +1,32 @@
 # Introduction 
-> :sparkles: Some bits of code has been proposed by AI. Also text has been corrected with help of AI.
+> :sparkles: Some bits of code has been proposed by AI. Also text has been polished with help of AI.
 
-After A year or so of having photovoltaic installation (PV) and pretty good flat rate of selling energy I had to switch to spot prices. It introduced a need to squeeze as much as possible from this setup. in terms of optimizing a return of investment (ROI).
+After A year of having photovoltaic installation (PV) and pretty good flat rate of selling energy I had to switch to spot prices. It introduced a need to squeeze as much as possible from this setup for incresing the return of investment (ROI).
 
-The solution does not implement automation of activating household appliances, that accumulates energy during cheapest periods. It correlates electricity spot prices with solar exposure forecast to find the best time frames to sell the energy as well as charge battery.
+It correlates electricity spot prices with solar exposure forecast to find the best time frames to sell the energy as well as charge battery.
 
-> :exclamation: It's important to be aware that repeatable charging and discharging battery reflects into its wear. Whatch out discharge velocity (C-rate). Set the inverter for discharge to be within 0.3-0.7C range.
+The solution is prepared as set of template sensors, script and automation, provided as single HA package.
+
+> :exclamation: It's important to be aware that repeatable charging and discharging battery incluences its wear. Whatch out discharge velocity (C-rate). The advised C-rate is within 0.3-0.7C range.
 
 # Understanding PV Plant ROI
 
 > :bulb: the information below is based on Central European market. Might differ in other parts of the world.
 
-The most important factor is that the gross price of purchased electricity is several times higher than the price at which electricity is sold. In the Czech Republic, households sell electricity at net prices. While no regulatory costs are applied on the selling side, intermediary companies charge various handling fees, reducing the net income.
+The most important factor to remember is that the gross price of purchased electricity is several times higher than the price at which electricity is sold. In the Czech Republic, households sell electricity at net prices increased by handling fee.
 
 At the same time, purchasing electricity includes additional regulatory costs such as distribution, network maintenance, and special taxes - all of which are further increased by VAT.
 
 Here is the evolution of total selling and purchasing prices over the past years:
 
 ![Sale vs Purchase Price Comparison](images/sale_vs_purchase.png)
-You might spot, that since Nov'25 the saling price is not constant anymore. Correct, those are spot prices I opted since then. It's obvious that average price is higher than previously flat rate. Red color indicates prices below which export to grid should avoided. It's because of negative prices spot prices shifted by a fee for the company who I sell the energy to.
 
-The ROI (Return on Investment) is built on two main components:
+You might spot, that since Nov'25 the saling price is not constant anymore. Correct, those are spot prices I opted since then. It's obvious that average price is higher than previous flat rate. Red color indicates prices below which export to grid should be avoided otherwise it would generate additional cost to the household. It's the 0 value shifted by handling fee.
 
-- **PV energy consumed by the household** – This should form the largest portion of ROI. It represents the cost of electricity you did not have to buy thanks to your PV system. The more PV energy you can store and use within the household, the better.
-- **PV energy sold** – Typically, especially during summer months, more PV produced energy is sold than utilized, but its total contribution to ROI is significantly smaller. Doesn't mean negligible.
+The return on investment is built on two main components:
+
+- **PV energy consumed by the household** – This should form the largest portion of ROI. It represents the cost of electricity you did not have to buy thanks to your PV system. The more PV energy you can accumulate and use within the household, the better.
+- **PV energy sold** – Typically, especially during summer months, more PV produced energy is sold than utilized, but its total contribution to ROI is significantly smaller. Doesn't mean negligible
 
 # The Automation Concept
 
@@ -49,7 +52,7 @@ While it could be limited to single discharge, split into two has benefits:
 
 Discharging must not result in an energy deficit later. Therefore no discharge is triggered if not enough PV energy is forecasted. At the same time a minimum battery levels must be maintained. In my setup it makes 25% SOC reserved after morning discharge together with minimum of 17kWh forecasted energy or 70% SOC after evening discharge and 13 kWh of forecasted PV energy next day.
 
-The setting of edge conditions might differ from installation to installation. It must be set with safe margin to avoid buying energy, for insuficient sunlight weather.
+The setting of edge conditions might differ from installation to installation. It must be set with safe margin to avoid buying energy.
 
 ## Delayed Charge
 
@@ -141,6 +144,8 @@ Both are implemented as `input` entities. Automation state materializes state of
 | `input_number.pv_ctrl_discharge_velocity`   | Maximum discharge power, used to calculate a time needed to discharge battery to requested SOC |
 | `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
 | `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
+| `input_datetime.pv_ctrl_solcast_forecast_balance` | Balance, between 10% percentile, 50% percentile and 90% percentile sun forecast. The 50% results in 50% percentile. -100% makes the result equal 10% percentile, while 100% gives 90% percentile. -15% returns the sum of 15% of 10% percentile and 35% of 50% percentile. It's useful for tunning up between pesimistic and optimistic suncast prediction, time needed to charge the battery
+
 
 **The Automation**
 Finally, the `automation.pv_ctrl_executor` is the core component that makes decissions based on its current state and inputs provided by sensors.

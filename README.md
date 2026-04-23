@@ -180,6 +180,7 @@ All of them must be adapted if you are using a different inverter than Wattsonic
 | `input_number.pv_ctrl_discharge_velocity`   | Expected discharge power, used to calculate a time needed to discharge battery to requested SOC |
 | `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
 | `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
+| `input_datetime.pv_ctrl_solcast_forecast_balance` | Balance, between 10% percentile, 50% percentile and 90% percentile sun forecast. The 50% results in 50% percentile. -100% makes the result equal 10% percentile, while 100% gives 90% percentile. -15% returns the sum of 15% of 10% percentile and 35% of 50% percentile. It's useful for tunning up between pesimistic and optimistic suncast prediction, time needed to charge the battery
 
 
 ---
