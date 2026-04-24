@@ -1,78 +1,79 @@
-# Introduction 
-> :sparkles: Some bits of code as well as text polishing has been done with help of AI.
+# Introduction
 
-After a time period with a pretty good flat rate of selling energy I had to switch to spot prices. It introduced a need to squeeze as much as possible from this setup for incresing the return of investment (ROI).
+> :sparkles: Some parts of the code as well as text polishing have been done with the help of AI.
 
-> It's prepared for Wattsonic inverter, though it can be easily reconfigured for other devices (see The Code section)
+After a period with a fairly attractive flat rate for selling energy, I had to switch to spot prices. This introduced a need to squeeze as much as possible from the setup to increase the return on investment (ROI).
 
-**What it does?**
-The main idea is based on observed evolution of spot prices during each day.
+It's prepared for a Wattsonic inverter, though it can be easily reconfigured for other devices (see The Code section).
+
+**What does it do?**
+The main idea is based on the observed evolution of spot prices during each day.
 
 ![Spot prices during a day](./images/spot_price_day.svg)
 
-It usually feature two peaks: morning and evening, and a trough around midday. The peaks - typically short - are good opportunity to sell excess of energy cumulated in battery for best prices. To avoid battery energy shortage, it uses PV forecast to support decission logic.
+It usually features two peaks—morning and evening—and a trough around midday. The peaks—typically short—are a good opportunity to sell excess energy accumulated in the battery at the best prices. Recharging is shifted to cheapest hours, allowing to utilize time of dropping but still good prices to sell even more produces PV energy.
 
-There are several mature yet complex solutions for this task already, to mention EVCC or PredBat. They are definitively worth checking. My idea was to create someting simple for simple use-case. Also I wanted to collect first hand experience with Home Assistant automation.
+To avoid battery energy shortages, it uses PV forecasts to support the decision logic.
 
-> :exclamation: It's important to be aware that repeatable charging and discharging battery incluences its wear. Whatch out discharge velocity (C-rate). The advised C-rate is within 0.3-0.7C range.
+> :bulb: There are several mature yet complex solutions covering PV operation optimization, such as EVCC or PredBat. They are definitely worth checking out. My idea was to create something simple for a simple use case. I also wanted to gain first-hand experience with building Home Assistant automation.
+
+> :exclamation: It's important to be aware that repeated charging and discharging of the battery influences its wear. Watch the discharge velocity (C-rate). The recommended C-rate is within the 0.3–0.7C range.
 
 # The Automation Concept
 
-Observations instroduced above lead to a set of general automation rules:
+The observations introduced above lead to a set of general automation rules:
 
 1. Sell energy stored in batteries during peak price periods
-2. Delay battery charging during morning hours, to sell PV production for good prices
-3. Charge the battery during the cheapest price window
-4. Discharge only if enough PV energy is forecasted
-5. Secure minimum energy in battery to avoid buying it for household operations
+1. Delay battery charging during morning hours to keep selling PV production at good prices
+1. Charge the battery during the cheapest price window
+1. Discharge only if enough PV energy is forecasted
+1. Maintain a minimum energy level in the battery to avoid buying energy for household operations
 
-This together introduces four phases:
+This translates into four phases.
 
 ## Discharge (morning and evening)
 
-While it could be limited to single discharge, split into two has benefits:
-* prices during evening hours are ussually a bit higher
-* Due to narrowness of peaks it's better to share energy over two peaks
-* split into two gives better margin management
-* morning PV forecast allows last minute decission to skip the morning discharge
+While it could be limited to a single discharge, splitting it into two has benefits:
 
-Discharging must not result in an energy deficit later. Therefore no discharge is triggered if not enough PV energy is forecasted. At the same time a minimum battery levels must be maintained. It includes support for "Delayed Charge" time period.
+* Prices during evening hours are usually slightly higher
+* Due to the narrowness of peaks, it’s better to distribute energy across both
+* Splitting provides better margin management
+* Morning PV forecast allows a last-minute decision to skip the morning discharge
 
-The setting of edge conditions might differ from installation to installation. It must be set with safe margin to avoid buying energy.
+Discharging must not result in an energy deficit later. Therefore, no discharge is triggered if insufficient PV energy is forecasted. At the same time, minimum battery levels must be maintained. This also includes support for the "Delayed Charge" time period.
+
+The configuration of edge conditions may differ between installations. It should be set with a safe margin to avoid buying energy.
 
 > :electric_plug: To sell stored energy, the inverter is switched to a mode that exports battery energy to the grid. Depending on the inverter model and/or firmware version, such a mode may be available as a main operating mode or as a scheduled mode (Time of Use, ToU).
-This implementation uses scheduled mode valid for Wattsonic gen3 fw v2
+This implementation uses a scheduled mode compatible with Wattsonic Gen3 firmware v2.
 
-## Delayed Charge
+## Charge Delay
 
-It is the period between morning discharge and the cheapest charging window.
+This is the period between the morning discharge and the cheapest charging window.
 
 During this time:
-- The system should behave similarly to General mode, but
-- PV production should prioritize export to the grid over charging the battery.
 
-This period implements several guards:
+* The system should behave similarly to General mode, but
+* PV production should prioritize export to the grid over charging the battery
 
-- it's activated only if proceeds the morning discharge. It comes from assumption that, if discharge has been skipped, then it's gonna be no enough PV energy to play with.
+This period includes several safeguards:
 
-- during this period, the battery still provides energy to the hausehold, in case PV doesn't cover the needs. If battery SOC drops to the predefined limit, the mode is interrupted and inverter returns to regular operational mode, securing battery charge from PV.
+* It is activated only if it follows the morning discharge. This is based on the assumption that if discharge was skipped, there likely isn’t enough PV energy available.
+* During this period, the battery still supplies energy to the household if PV does not cover demand. If battery SOC drops to the predefined limit, the mode is interrupted and the inverter returns to normal operation, prioritizing battery charging from PV.
+* If spot prices drop below a certain limit, selling no longer makes sense. Instead of suppressing PV production, it is better to use it to charge the battery.
 
-- if spot prices drop undel limit, selling does not make sense anymore. Instead of suppressing PV production, it is better to use it to charge the battery.
-
-> :electric_plug: This mode might be called **Feed-in Mode**. If unavailable, limiting the charging current may help achieving a similar result, though Feed-in Mode still allows charging if PV production exceeds export limits.
-Wattsonic Gen3 with firmware 2.x does not provide Feed-in Mode. It was introduced in later firmware versions.
+> :electric_plug: This mode might be called Feed-in Mode. If unavailable, limiting the charging current may help achieve a similar effect, though Feed-in Mode still allows charging if PV production exceeds export limits.
+Wattsonic Gen3 with firmware 2.x does not provide Feed-in Mode; it was introduced in later versions.
 
 ## Cheapest Charge
 
-It's important to secure enough time to fully charge battery. The time of charging  depends mainly by a weather. Then might be influced by household usage. 
+It is important to ensure enough time to fully charge the battery. Charging time depends mainly on weather conditions and may also be influenced by household usage.
 
-Here is a few parameters that can help with calculation of needed time window.
+Here are a few parameters that help calculate the required charging window:
 
-- Solcast Balance - Solcast provides probability of Sun power as 3 values: 10%, 50% and 90% percentile. Solcast balance allow to shift toward more pessimistic (negative percentage on the slider) or optimistic prediction (positive percentage). 0% means 50% percentile.
-
-- Charging End Time - If cheapest hours become later than usual and/or bad weather conditions requires more time to charge, it might lead to situation that battery will not charge enough. This setting prevents it by planning the charging time window earlier.
-
-- Charge Overhead - Normally the demand is calculated from battery size, SOC to charge and forecasted PV energy capped by Charge velocity. It does not take into account household usage nor other loses. This parameter increases predicted energy demand for charging by given factor, widen charge time window.
+* Solcast Balance – Solcast provides solar forecasts as three percentiles: 10%, 50%, and 90%. The balance allows shifting toward a more pessimistic (negative values) or optimistic (positive values) prediction. A value of 0% corresponds to the 50th percentile.
+* Charging End Time – If the cheapest hours occur later than usual and/or poor weather requires more charging time, the battery might not charge sufficiently. This setting mitigates that by shifting the charging window earlier
+* Charge Overhead – Normally, demand is calculated based on battery size, the remaining SOC, and forecasted PV energy capped by maximum charging velocity. It does not take a household consumption or other losses into account. This parameter increases the predicted energy demand by a given factor, widening the charging window.
 
 <img src="images/config_2.png" alt="Config 2" width="40%">
 
@@ -80,16 +81,15 @@ Here is a few parameters that can help with calculation of needed time window.
 
 # The Package
 
-For no deployment better option, the entire solution is implemented as a Home Assistant package:
+For easier deployment (and no better option) the entire solution is implemented as a Home Assistant package:
 
 ![alt text](images/diagram.svg)
 
 **Proxy Sensors**
-Consider them as an API between 3rd party integration sensors, respresenting state of inverter, solar forecast and prices. Thanks to this approach, the code never references 3rd party sensors, being independent from their data format. Also, in case of replacing integrations, it's enough to adjust proxy sensors.
+These act as an API between third-party integration sensors, representing the state of the inverter, solar forecast, and prices. This approach ensures that the code never directly references third-party sensors, making it independent of their data formats. If integrations are replaced, only the proxy sensors need to be adjusted.
 
 **Script**
-Like proxy sensors, the `script.pv_ctrl_inverter` plays a role of the proxy for calling the solar inverter.
-It's a single, but paramterized script, that implements inverter-specific commands.
+Like proxy sensors, the `script.pv_ctrl_inverter` acts as an abstraction layer for controlling the inverter. It is a single, parameterized script implementing inverter-specific commands.
 
 Example:
 ```yaml
@@ -98,37 +98,37 @@ data:
   mode: general
 ```
 
-Following modes are accepted:
-`general` - Resets inverter to general mode, incl. restoring unlimited battery charge
-`discharge_grid` - enables discharge mode to the grid. Currently implemented with use of schedule Wattsonic feature, that allows to chose discharge mode. 
-`feedin` - make inverter prefer injecting produced energy to the grid, instead of charging battery. Cyrrently chieved by limiting a charge current. 
-`charge_disabled` - sets charge current to zero (unused)
-`charge_enabled` - sets charge current to maximum (unused)
-`injection_enabled` - Enables injection to the grid
-`injection_disabled` - Disables injection to the grid
+Supported modes:
 
-Two latest two operations are utilized by another - independent - automation that prevents selling energy when its price is below configured limit.
+* `general` – Resets inverter to general mode, including restoring unlimited battery charging
+* `discharge_grid` – Enables discharge to the grid (implemented using Wattsonic scheduling)
+* `feedin` – Prefers exporting energy to the grid instead of charging the battery (currently achieved by limiting charging current)
+* `charge_disabled` – Sets charging current to zero (unused)
+* `charge_enabled` – Sets charging current to maximum (unused)
+* `injection_enabled` – Enables grid export
+* `injection_disabled` – Disables grid export
+
+The last two operations are used by a separate automation that prevents selling energy when the price is below a configured threshold.
 
 **TimeWindow Sensors**
-These template sensors calculate start and end of charging and discharging time periods for the current day
+These template sensors calculate the start and end of charging and discharging periods for the current day:
 
-- `sensor.pv_ctrl_most_expensive_hours_morning` – time of morning discharge
-- `sensor.pv_ctrl_most_expensive_hours_afternoon` – time of evening discharge
-- `sensor.pv_ctrl_cheapest_hours` – time of cheapest charging window
+* `sensor.pv_ctrl_most_expensive_hours_morning` – morning discharge window
+* `sensor.pv_ctrl_most_expensive_hours_afternoon` – evening discharge window
+* `sensor.pv_ctrl_cheapest_hours` – cheapest charging window
 
-These sensors store additional data under attributes.data key. The results are used by automation as well as are presented on the dashboard.
+They also store additional data in attributes.data, used both by automation and for dashboard display.
 
 **Automation State and Config Entities**
 
-Both are implemented as `input` entities. Automation state materializes state of the automation logic.Config Entities provide option to customize and control the automation.
-
+Both are implemented as input entities. Automation state represents the current phase, while config entities allow customization and control.
 
 | Entity                                       | Description |
 |----------------------------------------------|-------------|
 | `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. It's especially important for mobile views, where current HA UI makes an accidental change of parameters more then likely |
 | `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
 | `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
-| `input_select.pv_ctrl_phase`                 | Materializes and provides the current automation phase. Not intended to be edited manually. Possible values are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
+| `input_select.pv_ctrl_phase`                 | Represents the current automation phase (not intended for manual editing). Possible values are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
 | `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today; required for the morning discharge |
 | `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow; required for the evening discharge |
 | `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge |
@@ -137,38 +137,39 @@ Both are implemented as `input` entities. Automation state materializes state of
 | `input_number.pv_ctrl_charge_velocity`      | Maximum charging power, the velocity the battery can be charged with. Used to cap PV energy provided by Solcast |
 | `input_number.pv_ctrl_discharge_velocity`   | Maximum discharge power, used to calculate a time needed to discharge battery to requested SOC |
 | `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
+| `input_number.pv_ctrl_solcast_forecast_balance` | Allows setting a balance between 10%, 50%, 90% percentile suncast prediction |
 | `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
-| `input_datetime.pv_ctrl_solcast_forecast_balance` | Balance between 10%, 50%, 90% percentile suncast prediction
-
 
 **The Automation**
-Finally, the `automation.pv_ctrl_executor` is the core component that makes decissions based on its current state and inputs provided by sensors.
+Finally, `automation.pv_ctrl_executor` is the core component that makes decisions based on its current state and inputs from sensors.
 
 # The code
 
-The Home Assistant package is available under Github [link](https://github.com/michal-bartak/homeassistant-pv-control/blob/main/packages/pv_control.yaml).
-In case you are not familiar with HA packages, here is the [documentation](https://www.home-assistant.io/docs/configuration/packages/).
+The Home Assistant package is available on GitHub: [link](https://github.com/michal-bartak/homeassistant-pv-control/blob/main/packages/pv_control.yaml).
+If you are not familiar with HA packages, see the [documentation](https://www.home-assistant.io/docs/configuration/packages/).
 
 **Requirements**
 * Wattsonic gen3 integration by GiZMoSK ([GitHub](https://github.com/GiZMoSK1221/hass-addons))
 * Solcast ([GitHub](https://github.com/BJReplay/ha-solcast-solar), [HA forum](https://community.home-assistant.io/t/wattsonic-photovoltaic-power-plant-fve-integration/406135))
 * CZ Spot prices ([GitHub](https://github.com/rnovacek/homeassistant_cz_energy_spot_prices))
 
-> :exclamation: It's important to maintain normalized unit magnitude for all sensors and input values: kW / kWh
+> :exclamation: It is important to maintain consistent unit magnitudes for all sensors and inputs (kW / kWh).
 
-Reconfiguring for other coverters is possible. It requires to adjust:
-- the script, implementing commands valid for the inverter
-- proxy sensors, securing the same output data format.
+Reconfiguring for other inverters is possible. It requires adjusting:
+
+* The script implementing inverter-specific commands
+* Proxy sensors to ensure consistent output data format
 
 # The Dashboard
 
 ![The Dashboard](images/dashboard.png)
 
-The design of the dashboard is a matter of personal preference. This one grown during development to help visualization of relationships between variables and to allow manual control in case the automation behaves unexpectedly (which can happen during development).
+The dashboard design is a matter of personal preference. This one evolved during development to help visualize relationships between variables and allow manual control in case the automation behaves unexpectedly (which can happen during development).
 
-Configuration controls are protected by an Edit Mode toggle to prevent accidental changes - especially useful on mobile devices.
+Configuration controls are protected by an Edit Mode toggle to prevent accidental changes—especially useful on mobile devices.
 
 The top buttons control inverter modes. The five buttons below represent automation phases.
+
 
 This dashboard uses:
 - `custom:apex-charts` for graphs
