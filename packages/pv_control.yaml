@@ -184,7 +184,7 @@ pv_ctrl_control:
           unique_id: "pv_ctrl_spot_electricity_prices"
           default_entity_id: sensor.pv_ctrl_spot_electricity_prices
           state: "{{ states('sensor.current_spot_electricity_price_15min') }}"
-          unit_of_measurement: kWh
+          unit_of_measurement: CZK/kWh
           attributes:
             interval: "00:15:00"
             data: >
