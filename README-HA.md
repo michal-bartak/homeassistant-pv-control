@@ -1,25 +1,26 @@
 # Introduction
 
-> :sparkles: Some parts of the code as well as text polishing have been done with the help of AI.
-
 After a period with a fairly attractive flat rate for selling energy, I had to switch to spot prices. This introduced a need to squeeze as much as possible from the setup to increase the return on investment (ROI).
 
-It's prepared for a Wattsonic inverter, though it can be easily reconfigured for other devices (see The Code section).
+![The Dashboard](images/dashboard.png)
 
-**What does it do?**
+As an owner of Wattsonic gen3, it's prepared with this inverter in mind, though it can be easily reconfigured for other devices (see The Code section).
+
+> :bulb: There are several mature yet complex solutions covering PV operation optimization, such as EVCC or PredBat. They are definitely worth checking out. My intention was to create something simple for a simple use case (and deliver fast). I also wanted to gain first-hand experience with building Home Assistant automation.
+
+> :sparkles: Some parts of the code as well as text polishing have been done with the help of AI.
+
+# The Automation Concept
+
 The main idea is based on the observed evolution of spot prices during each day.
 
 ![Spot prices during a day](./images/spot_price_day.svg)
 
-It usually features two peaks—morning and evening—and a trough around midday. The peaks—typically short—are a good opportunity to sell excess energy accumulated in the battery at the best prices. Recharging is shifted to cheapest hours, allowing to utilize time of dropping but still good prices to sell even more produces PV energy.
+It usually features two peaks - morning and evening - and a trough around midday. The peaks - typically short - are a good opportunity to sell excess energy accumulated in the battery at the best prices. Recharging is shifted to cheapest hours, allowing to utilize time of dropping but still good prices to sell even more produces PV energy.
 
 To avoid battery energy shortages, it uses PV forecasts to support the decision logic.
 
-> :bulb: There are several mature yet complex solutions covering PV operation optimization, such as EVCC or PredBat. They are definitely worth checking out. My idea was to create something simple for a simple use case. I also wanted to gain first-hand experience with building Home Assistant automation.
-
 > :exclamation: It's important to be aware that repeated charging and discharging of the battery influences its wear. Watch the discharge velocity (C-rate). The recommended C-rate is within the 0.3–0.7C range.
-
-# The Automation Concept
 
 The observations introduced above lead to a set of general automation rules:
 
@@ -67,7 +68,7 @@ Wattsonic Gen3 with firmware 2.x does not provide Feed-in Mode; it was introduce
 
 ## Cheapest Charge
 
-It is important to ensure enough time to fully charge the battery. Charging time depends mainly on weather conditions and may also be influenced by household usage.
+This phase turns inverter into general mode, thus it's nothing special except it finishes the Charge Delay, influencing income from that phase. Potentially we want to delay cheapest charge as much as we can, but it's more imporant to to ensure enough time to fully charge the battery. Charging time depends mainly on weather conditions and may also be influenced by household usage.
 
 Here are a few parameters that help calculate the required charging window:
 
@@ -75,7 +76,7 @@ Here are a few parameters that help calculate the required charging window:
 * Charging End Time – If the cheapest hours occur later than usual and/or poor weather requires more charging time, the battery might not charge sufficiently. This setting mitigates that by shifting the charging window earlier
 * Charge Overhead – Normally, demand is calculated based on battery size, the remaining SOC, and forecasted PV energy capped by maximum charging velocity. It does not take a household consumption or other losses into account. This parameter increases the predicted energy demand by a given factor, widening the charging window.
 
-<img src="images/config_2.png" alt="Config 2" width="40%">
+On top of that, if unselable prices extend the cheapest time span, the phase will start as early as possible.
 
 > :electric_plug: Charging during the cheapest hours requires no special inverter mode - just the standard “General” mode. 
 
@@ -90,25 +91,6 @@ These act as an API between third-party integration sensors, representing the st
 
 **Script**
 Like proxy sensors, the `script.pv_ctrl_inverter` acts as an abstraction layer for controlling the inverter. It is a single, parameterized script implementing inverter-specific commands.
-
-Example:
-```yaml
-action: script.pv_ctrl_inverter
-data:
-  mode: general
-```
-
-Supported modes:
-
-* `general` – Resets inverter to general mode, including restoring unlimited battery charging
-* `discharge_grid` – Enables discharge to the grid (implemented using Wattsonic scheduling)
-* `feedin` – Prefers exporting energy to the grid instead of charging the battery (currently achieved by limiting charging current)
-* `charge_disabled` – Sets charging current to zero (unused)
-* `charge_enabled` – Sets charging current to maximum (unused)
-* `injection_enabled` – Enables grid export
-* `injection_disabled` – Disables grid export
-
-The last two operations are used by a separate automation that prevents selling energy when the price is below a configured threshold.
 
 **TimeWindow Sensors**
 These template sensors calculate the start and end of charging and discharging periods for the current day:
@@ -152,27 +134,50 @@ If you are not familiar with HA packages, see the [documentation](https://www.ho
 * Wattsonic gen3 integration by GiZMoSK ([GitHub](https://github.com/GiZMoSK1221/hass-addons))
 * Solcast ([GitHub](https://github.com/BJReplay/ha-solcast-solar), [HA forum](https://community.home-assistant.io/t/wattsonic-photovoltaic-power-plant-fve-integration/406135))
 * CZ Spot prices ([GitHub](https://github.com/rnovacek/homeassistant_cz_energy_spot_prices))
+* Dashboard:
+  - `custom:apex-charts` for graphs
+  - `custom:button-card` for controls
+  - `custom:restriction-card` for locking UI elements
+  - `cardmod`/`uix` integration
 
 > :exclamation: It is important to maintain consistent unit magnitudes for all sensors and inputs (kW / kWh).
 
-Reconfiguring for other inverters is possible. It requires adjusting:
+Usage with different integration
 
-* The script implementing inverter-specific commands
-* Proxy sensors to ensure consistent output data format
+It's possible and requires:
 
-# The Dashboard
+* Adjusting the script implementing inverter-specific commands (see below)
+* Adjusting proxy sensors to provide expected data to automations (see below)
+* Changing monetary units, since original code uses CZK.
+* Adjust dashboard, since it uses some unproxied entities directly
 
-![The Dashboard](images/dashboard.png)
+**The Script**
 
-The dashboard design is a matter of personal preference. This one evolved during development to help visualize relationships between variables and allow manual control in case the automation behaves unexpectedly (which can happen during development).
+Example:
+```yaml
+action: script.pv_ctrl_inverter
+data:
+  mode: general
+```
+Supported modes:
 
-Configuration controls are protected by an Edit Mode toggle to prevent accidental changes—especially useful on mobile devices.
+* `general` – Resets inverter to general mode, including restoring unlimited battery charging
+* `discharge_grid` – Enables discharge to the grid (implemented using Wattsonic scheduling)
+* `feedin` – Prefers exporting energy to the grid instead of charging the battery (currently achieved by limiting charging current)
+* `charge_disabled` – Sets charging current to zero (unused)
+* `charge_enabled` – Sets charging current to maximum (unused)
+* `injection_enabled` – Enables grid export
+* `injection_disabled` – Disables grid export
 
-The top buttons control inverter modes. The five buttons below represent automation phases.
+The last two operations are used by a separate automation that prevents selling energy when the price is below a configured threshold.
+
+**Proxy sensors**
+
+These are set of template sensors that prepare and optimize data for the rest of implementation.
 
 
-This dashboard uses:
-- `custom:apex-charts` for graphs
-- `custom:button-card` for controls
-- `custom:restriction-card` for locking UI elements
-- `cardmod`/`uix` integration
+| Entity                                       | Description |
+|----------------------------------------------|-------------|
+| `sensor.pv_ctrl_battery_soc`                 | provides SOC of PV system battery. Valid values are from range 0-100 and represents percentage of battery charge |
+| `sensor.pv_ctrl_solar_forecast_today` and<br>`sensor.pv_ctrl_solar_forecast_tomorrow`|  Both provide array of forecasted energy (in kWh) for each 30 min period.<br>The period length is provided by `attributes.period` attribute.<br>Data are stored under `attributes.data` as array of following structure `{time: <time>, energy: <val1>, energy_10: <val2>, energy_90: <val3> }`. The `energy`, `energy_10` and `energy_90` represents 50th, 10th and 90% percentile predition originally provided by Solcast;<br><br>Note that value energy is scaled down to 30-minute intervals (unlike in Solcast integration). Also the result is stripped out from leading and trailing zero-values records. |
+| `sensor.pv_ctrl_spot_electricity_prices`           | Provides array of prices (for kWh) valid within 15-minute intervals.<br>The period length is provided by `attributes.period` attribute.<br>Data are stored under attributes.data as array of following structure: `{time: <time>, val: <price>}` |

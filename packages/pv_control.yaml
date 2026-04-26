@@ -124,17 +124,19 @@ pv_ctrl_control:
 
   template:
     - sensor:
-        - name: "State of Charge"
-          default_entity_id: sensor.pv_ctrl_soc
+        - name: "PV Battery SOC"
+          default_entity_id: sensor.pv_ctrl_battery_soc
           unique_id: "pv_ctrl_soc"
-          state: "{{ states('sensor.wattsonic_battery_soc') | float(0) }}"
+          state: "{{ states('sensor.pv_ctrl_battery_soc') | float(0) }}"
           unit_of_measurement: "%"
+          icon: mdi:battery
 
         - name: "Solar Forecast Today"
           default_entity_id: sensor.pv_ctrl_solar_forecast_today
           unique_id: "pv_ctrl_solar_forecast_today"
           state: "{{ states('sensor.solcast_pv_forecast_forecast_today') }}"
           unit_of_measurement: kWh
+          icon: mdi:solar-forecast-variant
           attributes:
             interval: "00:30:00"
             data: |
@@ -160,6 +162,7 @@ pv_ctrl_control:
           unique_id: "pv_ctrl_solar_forecast_tomorrow"
           state: "{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }}"
           unit_of_measurement: kWh
+          icon: mdi:solar-forecast-variant
           attributes:
             interval: "00:30:00"
             data: |
@@ -227,7 +230,7 @@ pv_ctrl_control:
             {% set pv_data          = state_attr('sensor.pv_ctrl_solar_forecast_today', 'data') or [] %}
             {% set pv_data_interval = state_attr('sensor.pv_ctrl_solar_forecast_today', 'interval') | as_timedelta %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
-            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) / 100 %}
+            {% set soc              = states('sensor.pv_ctrl_battery_soc') | float(0) / 100 %}
             {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
             {% set charge_overhead  = states('input_number.pv_ctrl_charge_forecast_overhead') | float(0) / 100 + 1 %}
             {% set timewindow_limit = today_at(states('input_datetime.pv_ctrl_charge_delay_time_limit')) %}
@@ -336,8 +339,6 @@ pv_ctrl_control:
     - triggers:
         - trigger: state
           entity_id:
-            # - sensor.wattsonic_battery_soc
-            # - sensor.solcast_pv_forecast_forecast_today
             - input_number.pv_ctrl_soc_limit_morning
             - input_number.pv_ctrl_discharge_velocity
             - input_number.pv_ctrl_battery_capacity
@@ -357,7 +358,7 @@ pv_ctrl_control:
             {{ old_val | combine({'locked': locked})}}
           {% else %}
 
-            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) %}
+            {% set soc              = states('sensor.pv_ctrl_battery_soc') | float(0) %}
             {% set reserve          = states('input_number.pv_ctrl_soc_limit_morning')  | float(100) %}
             {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity')   | float(0) %}
@@ -463,7 +464,7 @@ pv_ctrl_control:
           {% if locked %}
             {{ old_val | combine({'locked': locked})}}
           {% else %}
-            {% set soc              = states('sensor.pv_ctrl_soc') | float(0) %}
+            {% set soc              = states('sensor.pv_ctrl_battery_soc') | float(0) %}
             {% set reserve          = states('input_number.pv_ctrl_soc_limit_evening')  | float(100) %}
             {% set discharge_power  = states('input_number.pv_ctrl_discharge_velocity') | float(1) %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity')   | float(0) %}
@@ -662,7 +663,7 @@ pv_ctrl_control:
 
         - trigger: state
           entity_id:
-            - sensor.wattsonic_battery_soc
+            - sensor.pv_ctrl_battery_soc
             - sensor.solcast_pv_forecast_forecast_today
             - sensor.solcast_pv_forecast_forecast_tomorrow
             - input_select.pv_ctrl_phase
@@ -698,7 +699,7 @@ pv_ctrl_control:
           {{ states('sensor.pv_ctrl_most_expensive_hours_evening') | as_datetime(today_at("0:0")) }}
 
         # Inverter sensor
-        soc: "{{ (states('sensor.wattsonic_battery_soc') | float(0) + 0.5) | int }}"
+        soc: "{{ (states('sensor.pv_ctrl_battery_soc') | float(0) + 0.5) | int }}"
 
         # Solcast sensors
         forecast_today: "{{ states('sensor.solcast_pv_forecast_forecast_today') | float(0) }}"
