@@ -103,14 +103,14 @@ They also store additional data in attributes.data, used both by automation and 
 
 **Automation State and Config Entities**
 
-Both are implemented as input entities. Automation state represents the current phase, while config entities allow customization and control.
+Both are implemented as input entities, surviving Home Assistant restarts.All of them are exposed on GUI.
 
 | Entity                                       | Description |
 |----------------------------------------------|-------------|
 | `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. It's especially important for mobile views, where current HA UI makes an accidental change of parameters more then likely |
-| `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
-| `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
-| `input_select.pv_ctrl_phase`                 | Represents the current automation phase (not intended for manual editing). Possible values are `General`, `Morning Discharge`, `Charge Delay`, `Cheapest Charge`, `Evening Discharge`. |
+| `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log. Automation has to be in `Active` or `Dry Run` mode |
+| `input_select.pv_ctrl_mode`                  | Allows to run the automation either for real or in testing mode (`Dry Run`). The `Dry-run` does everything the `Active` mode does without calling Inverter for changing modes. When `Disabled`, the automation internally does nothing, though, like template sensors, it still collects data. |
+| `input_select.pv_ctrl_phase`                 | Represents the current automation phase (under normal circumstances not intended for manual editing). Possible values are `General`, `Morning Discharge`, `Charge Delay`, `Cheapest Charge`, `Evening Discharge`. |
 | `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today; required for the morning discharge |
 | `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow; required for the evening discharge |
 | `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge |

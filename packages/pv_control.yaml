@@ -244,9 +244,9 @@ pv_ctrl_control:
           {% else %}
             {% set min_export_price = states('input_number.pv_ctrl_min_export_price') | float(0) %}
             {% set price_data       = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'data') or [] %}
-            {% set price_interval   = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'interval') | as_timedelta %}
+            {% set price_interval   = state_attr('sensor.pv_ctrl_spot_electricity_prices', 'interval') | default('0:15:0') | as_timedelta %}
             {% set pv_data          = state_attr('sensor.pv_ctrl_solar_forecast_today', 'data') or [] %}
-            {% set pv_data_interval = state_attr('sensor.pv_ctrl_solar_forecast_today', 'interval') | as_timedelta %}
+            {% set pv_data_interval = state_attr('sensor.pv_ctrl_solar_forecast_today', 'interval') | default('0:30:0') | as_timedelta %}
             {% set battery_capacity = states('input_number.pv_ctrl_battery_capacity') | float(0) %}
             {% set soc              = states('sensor.pv_ctrl_battery_soc') | float(0) / 100 %}
             {% set charge_power_cap = states('input_number.pv_ctrl_charge_velocity') | float(0) %}
@@ -280,7 +280,7 @@ pv_ctrl_control:
               {% for f in pv_data %}
                 {% set pt = as_datetime(f.time) %}
                 {% if pt <= t < pt + pv_data_interval %}
-                  {% set pv_ns.val = f.energy %}
+                  {% set pv_ns.val = f.energy / (pv_data_interval / price_interval) %}
                   {% break %}
                 {% endif %}
               {% endfor %}
@@ -288,8 +288,7 @@ pv_ctrl_control:
               {% set ns.data = ns.data + [{
                 'time': t,
                 'price': price,
-                'pv_estimate': pv_ns.val / 2,
-                'pv_price': (pv_ns.val / 2) * price
+                'pv_estimate': pv_ns.val
               }] %}
             {% endfor %}
 
