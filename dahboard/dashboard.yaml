@@ -1,0 +1,2723 @@
+button_card_templates:
+  customcard_style_locked:
+    variables:
+      lockentity: null
+    styles:
+      card:
+        - box-shadow: >-
+            [[[ return states[variables.lockentity]?.state == 'on' ? 'rgba(0, 0,
+            0, 0.3) 0px 1px 3px 0px' : 'none' ]]]
+        - pointer-events: >-
+            [[[ return states[variables.lockentity]?.state == 'on' ? 'auto' :
+            'none' ]]]
+      name:
+        - pointer-events: >-
+            [[[ return states[variables.lockentity]?.state == 'on' ? 'auto' :
+            'none' ]]]
+      icon:
+        - pointer-events: >-
+            [[[ return states[variables.lockentity]?.state == 'on' ? 'auto' :
+            'none' ]]]
+  customcard_inverter_style:
+    section_mode: true
+    show_state: false
+    variables:
+      activecolor: black
+      alternatecolor: ''
+    styles:
+      grid:
+        - grid-template-areas: '"i" "n"'
+        - grid-template-columns: 1fr
+        - grid-template-rows: minmax(0, 1fr) 40%
+        - align-items: center
+      card:
+        - padding: 0
+        - border-radius: var(--ha-card-border-radius, 12px)
+        - user-select: none
+      name:
+        - justify-self: start
+        - padding-left: 0px
+        - font-weight: 500
+        - font-size: 14px
+        - align-self: middle
+        - white-space: break-spaces;
+        - display: flex
+        - margin: 0px auto
+        - color: >
+            [[[ return variables.activecondition ? variables.activecolor :
+            'var(--tile-name-text-color)' ]]]
+      img_cell:
+        - justify-content: center
+        - align-items: center
+        - margin: none
+      icon:
+        - width: 30px
+        - justify-content: center
+        - align-items: center
+        - color: |
+            [[[ if (variables.alternatecolor) return variables.alternatecolor;
+                else if (variables.activecondition) return variables.activecolor;
+                else  return 'var(--tile-name-text-color)';
+            ]]]
+  customcard_altname_color:
+    variables:
+      activecolor: null
+      defaultcolor: color-mix(in srgb, var(--tile-name-text-color) 45%, transparent)
+    styles:
+      name:
+        - color: >
+            [[[  return variables.activecolor ? variables.activecolor :
+            variables.defaultcolor; ]]]
+  customcard_phase_style:
+    template: customcard_style_locked
+    show_icon: false
+    show_state: false
+    state:
+      - operator: '=='
+        value: '[[[ return variables.phase ]]]'
+        styles:
+          card:
+            - background-color: >-
+                [[[ return "color-mix(in srgb, " + variables.color + " 45%,
+                transparent)" ]]]
+          name:
+            - color: var(--secondary-text-color)
+    styles:
+      grid:
+        - grid-template-areas: '"n"'
+        - grid-template-columns: 1fr
+        - grid-template-rows: 1fr
+      card:
+        - padding: 0
+        - border-radius: var(--ha-card-border-radius, 12px)
+        - user-select: none
+        - height: 46px
+      name:
+        - justify-self: start
+        - padding-left: 0px
+        - font-weight: 400
+        - font-size: 12px
+        - align-self: middle
+        - white-space: normal
+        - display: flex
+        - margin: auto
+        - color: color-mix(in srgb, var(--tile-name-text-color) 45%, transparent)
+views:
+  - type: sections
+    max_columns: 4
+    title: FVE2
+    path: fve2
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            entities:
+              - entity: input_boolean.pv_ctrl_edit_mode
+                name: Edit Mode
+          - type: custom:button-card
+            template:
+              - customcard_inverter_style
+              - customcard_style_locked
+            variables:
+              lockentity: input_boolean.pv_ctrl_edit_mode
+              activecolor: var(--purple-color)
+              activecondition: |
+                [[[
+                    return (
+                          states['sensor.wattsonic_hybrid_inverter_working_mode_setting_text'].state == 'Economic mode' &&
+                          states['sensor.wattsonic_battery_mode_text'].state == 'discharge' &&
+                          Number(states['sensor.wattsonic_ecomode_period1_chargedischarge_setting'].state) == 2
+                        )
+                ]]]
+              alternatecolor: >
+                [[[ return
+                Number(states['sensor.wattsonic_grid_injection_power_limit_setting'].state)
+                > 0 ? '' : 'orange' ]]]
+            name: Discharge<br>To&nbsp;Grid
+            icon: >
+              [[[ return
+              Number(states['sensor.wattsonic_grid_injection_power_limit_setting'].state)
+              > 0 ? 'mdi:transmission-tower-import' :
+              'mdi:transmission-tower-off' ]]]
+            tap_action:
+              action: perform-action
+              perform_action: script.pv_ctrl_inverter
+              data:
+                mode: discharge_grid
+            confirmation:
+              text: Are you sure, to enable Discharge?
+            grid_options:
+              columns: 4
+          - type: custom:button-card
+            template:
+              - customcard_inverter_style
+              - customcard_style_locked
+            variables:
+              lockentity: input_boolean.pv_ctrl_edit_mode
+              activecolor: var(--energy-battery-out-color)
+              activecondition: |
+                [[[
+                    return (states['sensor.wattsonic_hybrid_inverter_working_mode_setting_text'].state == 'General mode' &&
+                    Number(states['sensor.wattsonic_charge_current_limit'].state) > 0)
+                ]]]
+            name: General<br>Mode
+            icon: mdi:transmission-tower
+            tap_action:
+              action: perform-action
+              perform_action: script.pv_ctrl_inverter
+              data:
+                mode: general
+            confirmation:
+              text: Are you sure, to enable General Mode?
+            grid_options:
+              columns: 4
+          - type: custom:button-card
+            template:
+              - customcard_inverter_style
+              - customcard_style_locked
+            variables:
+              lockentity: input_boolean.pv_ctrl_edit_mode
+              activecolor: var(--energy-solar-color)
+              activecondition: |
+                [[[
+                    return (
+                        states['sensor.wattsonic_hybrid_inverter_working_mode_setting_text'].state == 'General mode' &&
+                        Number(states['sensor.wattsonic_charge_current_limit'].state) == 0
+                        )
+                ]]]
+            name: General mode,<br>No&nbsp;charge
+            icon: mdi:solar-power
+            tap_action:
+              action: perform-action
+              perform_action: script.pv_ctrl_inverter
+              data:
+                mode: charge_disabled
+              target: {}
+            confirmation:
+              text: Are you sure, to enable No Battery Mode?
+            grid_options:
+              columns: 4
+          - type: horizontal-stack
+            cards:
+              - type: custom:button-card
+                template: customcard_phase_style
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  phase: General
+                  color: var(--energy-battery-out-color)
+                name: General
+              - type: custom:button-card
+                template: customcard_phase_style
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  phase: Morning Discharge
+                  color: var(--purple-color)
+                name: Morning Discharge
+              - type: custom:button-card
+                template: customcard_phase_style
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  phase: Delayed Charge
+                  color: var(--energy-solar-color)
+                name: Delayed<br>Charge
+              - type: custom:button-card
+                template: customcard_phase_style
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  phase: Cheapest Charge
+                  color: var(--energy-solar-color)
+                name: Cheapest<br>Charge
+              - type: custom:button-card
+                template: customcard_phase_style
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  phase: Evening Discharge
+                  color: var(--purple-color)
+                name: Evening Discharge
+            grid_options:
+              columns: 12
+              rows: auto
+          - type: horizontal-stack
+            cards:
+              - type: custom:button-card
+                template:
+                  - customcard_phase_style
+                  - customcard_altname_color
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  lockentity: input_boolean.pv_ctrl_edit_mode
+                  activecolor: >
+                    [[[ return
+                    Number(states['sensor.wattsonic_grid_injection_power_limit_setting'].state)
+                    == 0 ? 'orange' : null ]]]
+                name: Injection Disabled
+                tap_action:
+                  action: perform-action
+                  perform_action: script.pv_ctrl_inverter
+                  data:
+                    mode: injection_disabled
+                confirmation:
+                  text: Are you sure, to DISABLE injection to the grid?
+              - type: custom:button-card
+                template:
+                  - customcard_phase_style
+                  - customcard_altname_color
+                entity: input_select.pv_ctrl_phase
+                variables:
+                  lockentity: input_boolean.pv_ctrl_edit_mode
+                  activecolor: >
+                    [[[ return
+                    Number(states['sensor.wattsonic_grid_injection_power_limit_setting'].state)
+                    == 0 ? null : 'var(--energy-battery-out-color)' ]]]
+                name: Injection Enabled
+                tap_action:
+                  action: perform-action
+                  perform_action: script.pv_ctrl_inverter
+                  data:
+                    mode: injection_enabled
+                confirmation:
+                  text: Are you sure, to ENABLE injection to the grid?
+            grid_options:
+              columns: 12
+              rows: auto
+          - type: entities
+            entities:
+              - entity: sensor.pv_ctrl_most_expensive_hours_morning
+                name: Morning Discharge
+                secondary_info: state
+              - entity: sensor.pv_ctrl_cheapest_hours
+                name: Cheapest Charge
+                secondary_info: state
+              - entity: sensor.pv_ctrl_most_expensive_hours_evening
+                name: Afternoon Discharge
+                secondary_info: state
+              - type: divider
+              - entity: sensor.solcast_pv_forecast_forecast_today
+                name: Solcast today
+              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                name: Solcast today remaining
+              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+                name: Solcast tomorrow
+          - type: custom:config-template-card
+            variables:
+              min_sun: |
+                (() => { 
+                  const s =  states['input_number.pv_ctrl_min_suncast_current_day']?.state;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return 0;
+                  return Number(s);
+                })()  
+            entities:
+              - input_number.pv_ctrl_min_suncast_current_day
+            card:
+              type: custom:apexcharts-card
+              header:
+                show: true
+                title: Solar Forecast (7 days)
+              graph_span: 6d
+              span:
+                start: day
+              apex_config:
+                chart:
+                  height: 150px
+                grid:
+                  borderColor: rgba(118,128,128, 0.2)
+                xaxis:
+                  type: datetime
+                  min: |
+                    new Date().setHours(0,0,0,0)
+                  max: |
+                    new Date(new Date().setHours(0,0,0,0) + 7*24*60*60*1000)
+                annotations:
+                  yaxis:
+                    - 'y': ${min_sun}
+                      borderColor: '#00AA00'
+                      strokeDashArray: 4
+                      label:
+                        text: ${min_sun + 'kWh'}
+                        borderWidth: 0
+                        style:
+                          background: DimGrey
+                          color: white
+              series:
+                - entity: sensor.solcast_pv_forecast_forecast_today
+                  name: Forecast
+                  color: Grey
+                  opacity: 0.3
+                  type: column
+                  data_generator: |
+                    const entities = [
+                      'sensor.solcast_pv_forecast_forecast_today',
+                      'sensor.solcast_pv_forecast_forecast_tomorrow',
+                      'sensor.solcast_pv_forecast_forecast_day_3',
+                      'sensor.solcast_pv_forecast_forecast_day_4',
+                      'sensor.solcast_pv_forecast_forecast_day_5',
+                      'sensor.solcast_pv_forecast_forecast_day_6',
+                      'sensor.solcast_pv_forecast_forecast_day_7'
+                    ];
+
+                    const now = new Date(); 
+                    const result = [];
+
+                    entities.forEach((entityId, index) => {
+                      const stateObj = hass.states[entityId];
+                      if (!stateObj) return;
+
+                      const value = parseFloat(stateObj.state);
+                      if (isNaN(value)) return;
+
+                      // create date for each day (today + index)
+                      const d = new Date();
+                      d.setHours(0,0,0,0); 
+                      d.setDate(d.getDate() + index);
+                      result.push([d, value]);
+                    });
+
+                    return result;
+            grid_options:
+              columns: full
+        column_span: 1
+      - type: grid
+        cards:
+          - type: custom:config-template-card
+            variables:
+              startCharging: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_cheapest_hours']?.attributes?.data?.start;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              endCharging: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_cheapest_hours']?.attributes?.data?.end;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              startDischargingEvening: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_most_expensive_hours_evening']?.attributes?.data?.start;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              endDischargingEvening: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_most_expensive_hours_evening']?.attributes?.data?.end;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              startDischargingMorning: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_most_expensive_hours_morning']?.attributes?.data?.start;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              endDischargingMorning: |
+                (() => {
+                  const s = states['sensor.pv_ctrl_most_expensive_hours_morning']?.attributes?.data?.end;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return new Date().setHours(0,0,0,0);
+                  return new Date(s).getTime();
+                })()
+              min_export_price: |
+                (() => { 
+                  const s =  states['input_number.pv_ctrl_min_export_price']?.state;
+                  if (!s || s === 'unknown' || s === 'unavailable' || s === 'undefined') return 0;
+                  return Number(s);
+                })()  
+            entities:
+              - sensor.pv_ctrl_cheapest_hours
+              - sensor.pv_ctrl_most_expensive_hours_morning
+              - sensor.pv_ctrl_most_expensive_hours_evening
+              - input_number.pv_ctrl_min_export_price
+            card:
+              type: custom:apexcharts-card
+              update_interval: 1min
+              header:
+                show: true
+                title: Electricity spot price
+                show_states: true
+                colorize_states: true
+              graph_span: 48h
+              span:
+                start: day
+              now:
+                show: true
+                label: Now
+                color: '#448866'
+              series:
+                - entity: sensor.pv_ctrl_spot_electricity_prices
+                  name: Current spot price
+                  show:
+                    in_chart: false
+                    in_header: true
+                    name_in_header: true
+                - entity: sensor.pv_ctrl_spot_electricity_prices
+                  name: Spot price
+                  type: line
+                  data_generator: >
+                    const src =
+                    hass.states['sensor.pv_ctrl_spot_electricity_prices'];
+
+                    if (!src || !src.attributes.data) return [];
+
+
+                    return src.attributes.data.map((item) => {
+                      return [
+                        new Date(item.time).getTime(),
+                        item.price
+                      ];
+                    });
+                  stroke_width: 1
+                  curve: stepline
+                  show:
+                    in_chart: true
+                    in_header: false
+                - entity: sensor.sql_pv_earnings_today
+                  transform: >-
+                    return
+                    hass.states['sensor.sql_pv_earnings_today'].attributes.avoided;
+                  name: Avoided
+                  show:
+                    in_chart: false
+                    in_header: true
+                - entity: sensor.sql_pv_earnings_today
+                  transform: >-
+                    return
+                    hass.states['sensor.sql_pv_earnings_today'].attributes.sold;
+                  name: Sold
+                  show:
+                    in_chart: false
+                    in_header: true
+                - entity: sensor.sql_pv_earnings_today
+                  transform: >-
+                    return
+                    hass.states['sensor.sql_pv_earnings_today'].attributes.purchased;
+                  name: Purchased
+                  show:
+                    in_chart: false
+                    in_header: true
+              apex_config:
+                grid:
+                  borderColor: rgba(118,128,128, 0.2)
+                xaxis:
+                  type: datetime
+                annotations:
+                  xaxis:
+                    - x: EVAL:new Date().setHours(24,0,0,0)
+                      borderColor: '#888888'
+                      strokeDashArray: 1
+                      label:
+                        text: Tomorrow
+                        borderWidth: 0
+                        style:
+                          background: DimGrey
+                          color: white
+                          border: 0px
+                    - x: ${startDischargingMorning}
+                      x2: ${endDischargingMorning}
+                      fillColor: var(--purple-color)
+                      opacity: 0.2
+                    - x: ${startDischargingEvening}
+                      x2: ${endDischargingEvening}
+                      fillColor: var(--purple-color)
+                      opacity: 0.2
+                    - x: ${startCharging}
+                      x2: ${endCharging}
+                      fillColor: '#B3F7CA'
+                      opacity: 0.3
+                  yaxis:
+                    - 'y': ${min_export_price}
+                      borderColor: '#00AA00'
+                      strokeDashArray: 4
+                      label:
+                        text: ${min_export_price + ' threshold'}
+                        borderWidth: 0
+                        style:
+                          background: DimGrey
+                          color: white
+          - type: custom:apexcharts-card
+            header:
+              title: Solar forecast
+              show: true
+              show_states: true
+              colorize_states: true
+            now:
+              show: true
+              label: Now
+              color: '#448866'
+            apex_config:
+              chart:
+                height: 300px
+              tooltip:
+                enabled: true
+                shared: true
+                followCursor: true
+              xaxis:
+                type: datetime
+                max: |
+                  EVAL:(function(){
+                    let d = new Date();
+                    d.setDate(d.getDate()+1);
+                    d.setHours(23,59,59,0);
+                    return d.getTime();
+                  })()
+              annotations:
+                xaxis:
+                  - x: EVAL:new Date().setHours(24,0,0,0)
+                    borderColor: '#888888'
+                    strokeDashArray: 1
+                    label:
+                      text: Tomorrow
+                      borderWidth: 0
+                      style:
+                        background: DimGrey
+                        color: white
+                        border: 0px
+              grid:
+                borderColor: rgba(118,128,128, 0.2)
+            graph_span: 48h
+            span:
+              start: day
+            yaxis:
+              - id: capacity
+                show: true
+                opposite: true
+                decimals: 0
+                max: 100
+                min: 0
+                apex_config:
+                  tickAmount: 10
+              - id: kWh
+                show: true
+                min: 0
+                apex_config:
+                  tickAmount: 10
+              - id: header_only
+                show: false
+            series:
+              - entity: sensor.wattsonic_pv_input_total_power
+                name: Production
+                type: line
+                stroke_width: 2
+                float_precision: 2
+                color: Orange
+                opacity: 0.9
+                yaxis_id: kWh
+                unit: kW
+                extend_to: now
+                show:
+                  legend_value: false
+                  in_header: false
+                group_by:
+                  func: avg
+                  duration: 30m
+              - entity: sensor.pv_ctrl_solar_forecast_today
+                name: Forecast 10%
+                color: Grey
+                opacity: 0.3
+                stroke_width: 0
+                type: area
+                extend_to: false
+                yaxis_id: kWh
+                show:
+                  legend_value: false
+                  in_header: false
+                data_generator: >-
+                  const today = entity.attributes.data.map((entry) => {
+                    return [new Date(entry.time), entry.power_10];
+                  });
+
+                  const tomorrowEntity =
+                  hass.states['sensor.pv_ctrl_solar_forecast_tomorrow'];
+
+                  if (!tomorrowEntity || !tomorrowEntity.attributes.data) return
+                  today;
+
+                  const tomorrow = tomorrowEntity.attributes.data.map((entry) =>
+                  {
+                    return [new Date(entry.time), entry.power_10];
+                  });
+
+                  return today.concat(tomorrow);
+              - entity: sensor.pv_ctrl_solar_forecast_today
+                name: Forecast 50%
+                color: Grey
+                opacity: 0.3
+                stroke_width: 0
+                type: area
+                extend_to: false
+                yaxis_id: kWh
+                show:
+                  legend_value: false
+                  in_header: false
+                data_generator: >-
+                  const today = entity.attributes.data.map((entry) => {
+                    return [new Date(entry.time), entry.power_50];
+                  });
+
+                  const tomorrowEntity =
+                  hass.states['sensor.pv_ctrl_solar_forecast_tomorrow'];
+
+                  if (!tomorrowEntity || !tomorrowEntity.attributes.data) 
+                  return today;
+
+                  const tomorrow = tomorrowEntity.attributes.data.map((entry) =>
+                  {
+                    return [new Date(entry.time), entry.power_50];
+                  }); return today.concat(tomorrow);
+              - entity: sensor.pv_ctrl_solar_forecast_today
+                name: Forecast 90%
+                color: Grey
+                opacity: 0.1
+                stroke_width: 0
+                type: area
+                extend_to: false
+                yaxis_id: kWh
+                show:
+                  legend_value: false
+                  in_header: false
+                data_generator: >-
+                  const today = entity.attributes.data.map((entry) => {
+                    return [new Date(entry.time), entry.power_90];
+                  }); 
+
+                  const tomorrowEntity =
+                  hass.states['sensor.pv_ctrl_solar_forecast_tomorrow'];
+
+                  if (!tomorrowEntity || !tomorrowEntity.attributes.data) {
+                    return today;
+                  }
+
+                  const tomorrow = tomorrowEntity.attributes.data.map((entry) =>
+                  {
+                    return [new Date(entry.time), entry.power_90];
+                  });
+
+                  return today.concat(tomorrow);
+              - entity: sensor.pv_ctrl_solar_forecast_today
+                name: Forecast Balanced
+                color: '#3498db'
+                opacity: 0.9
+                stroke_width: 1
+                type: line
+                stroke_dash: 6
+                extend_to: false
+                yaxis_id: kWh
+                show:
+                  legend_value: false
+                  in_header: false
+                data_generator: >-
+                  const today = entity.attributes.data.map((entry) => {
+                    return [new Date(entry.time), entry.power_balanced];
+                  });
+
+                  const tomorrowEntity =
+                    hass.states['sensor.pv_ctrl_solar_forecast_tomorrow'];
+
+                  if (!tomorrowEntity || !tomorrowEntity.attributes.data) {
+                    return today;
+                  }
+
+                  const tomorrow = tomorrowEntity.attributes.data.map((entry) =>
+                  {
+                    return [new Date(entry.time), entry.power_balanced];
+                  });
+
+                  return today.concat(tomorrow);
+              - entity: sensor.pv_ctrl_solar_forecast_today
+                yaxis_id: header_only
+                name: Today Forecast
+                color: Grey
+                show:
+                  legend_value: true
+                  in_header: true
+                  in_chart: false
+              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                yaxis_id: header_only
+                name: Remaining Today
+                color: Grey
+                show:
+                  legend_value: true
+                  in_header: true
+                  in_chart: false
+              - entity: sensor.wattsonic_pv_generation_energy_on_that_day
+                yaxis_id: header_only
+                name: Production Today
+                color: Orange
+                show:
+                  legend_value: true
+                  in_header: true
+                  in_chart: false
+              - entity: sensor.pv_ctrl_solar_forecast_tomorrow
+                yaxis_id: header_only
+                name: Tomorrow Forecast
+                color: Grey
+                show:
+                  legend_value: true
+                  in_header: true
+                  in_chart: false
+      - type: grid
+        cards:
+          - type: custom:power-flow-card-plus
+            title: Distribution
+            card_mod:
+              style:
+                ha-card $: |
+                  h1.card-header { padding-top: 8px; }
+                .: |
+                  ha-card {
+                    --ha-card-header-font-size: 16px;
+                    --ha-font-weight-normal: var(--ha-card-header-font-weight);
+                    --ha-card-header-color: var(--secondary-text-color)
+                   }
+            w_decimals: 2
+            kw_decimals: 2
+            watt_threshold: 999
+            clickable_entities: true
+            entities:
+              home:
+                entity: sensor.wattsonic_home_consumption_now
+                subtract_individual: false
+                override_state: true
+                use_metadata: false
+              grid:
+                color_circle: true
+                color_value: false
+                invert_state: true
+                display_state: one_way
+                entity: sensor.wattsonic_total_power_on_meter
+              solar:
+                entity: sensor.wattsonic_pv_input_total_power
+                icon: mdi:weather-sunny
+              battery:
+                state_of_charge: sensor.wattsonic_battery_soc
+                entity: sensor.wattsonic_battery_p
+                show_state_of_charge: true
+                state_of_charge_unit_white_space: false
+                color_circle: true
+                use_metadata: false
+              fossil_fuel_percentage:
+                secondary_info: {}
+                use_metadata: false
+                unit_white_space: true
+            inverted_entities: grid
+            use_new_flow_rate_model: true
+            display_zero_lines:
+              mode: transparency
+              transparency: 80
+              grey_color:
+                - 189
+                - 189
+                - 189
+            disable_dots: false
+            sort_individual_devices: false
+          - type: custom:apexcharts-card
+            stacked: true
+            graph_span: 24h
+            span:
+              start: day
+            header:
+              show: true
+              title: Grid Power & Energy
+            yaxis:
+              - max: ~2
+                min: ~-2
+            apex_config:
+              xaxis:
+                type: datetime
+                max: |
+                  EVAL:(function(){
+                    let d = new Date();
+                    d.setDate(d.getDate());
+                    d.setHours(23,59,59,0);
+                    return d.getTime();
+                  })()
+              plotOptions:
+                bar:
+                  columnWidth: 600%
+              tooltip:
+                enabled: true
+                shared: false
+                followCursor: true
+              grid:
+                borderColor: rgba(118,128,128, 0.2)
+              legend:
+                formatter: |
+                  EVAL:function(seriesName, opts) {
+
+                    var data = opts.w.globals.series[opts.seriesIndex];
+
+                    // --- Sum for Injected and Purchased ---
+                    if (seriesName === "Injected" || seriesName === "Purchased") {
+                      var sum = 0;
+                      for (var i = 0; i < data.length; i++) {
+                        if (data[i] != null) sum += Math.abs(data[i]);
+                      }
+                      return seriesName + " (" + sum.toFixed(2) + " kWh)";
+                    }
+
+                    // --- Default behaviour for other series: show latest value ---
+                    var latest = null;
+                    for (var j = data.length - 1; j >= 0; j--) {
+                      if (data[j] != null) {
+                        latest = data[j];
+                        break;
+                      }
+                    }
+
+                    if (latest !== null) {
+                      return seriesName + " (" + latest.toFixed(2) + " kW)";
+                    }
+
+                    return seriesName;
+                  }
+            series:
+              - entity: sensor.wattsonic_total_power_on_meter
+                name: Power
+                type: line
+                stroke_width: 1
+                opacity: 0.9
+                extend_to: false
+                group_by:
+                  duration: 5m
+                  func: avg
+              - entity: sensor.energy_injected_hourly
+                name: Injected
+                color: SlateBlue
+                opacity: 0.9
+                yaxis_id: injected
+                stack_group: energy
+                type: column
+                stroke_width: 0
+                statistics:
+                  type: sum
+                  period: 5minute
+                group_by:
+                  duration: 1h
+                  start_with_last: true
+                  func: diff
+              - entity: sensor.energy_purchased_hourly
+                name: Purchased
+                color: red
+                opacity: 0.9
+                yaxis_id: purchased
+                stack_group: energy
+                type: column
+                invert: true
+                stroke_width: 0
+                statistics:
+                  type: sum
+                  period: 5minute
+                group_by:
+                  duration: 1h
+                  start_with_last: true
+                  func: diff
+        column_span: 1
+      - type: grid
+        cards:
+          - type: heading
+            heading: PV CTRL Settings
+            heading_style: subtitle
+            uix:
+              style: |
+                ha-card div.container div.content p {
+                  padding: 18px 4px 0px
+                }
+          - type: custom:restriction-card
+            condition:
+              entity: input_boolean.pv_ctrl_edit_mode
+              value: 'off'
+            restrictions:
+              block: true
+            card:
+              type: entities
+              entities:
+                - entity: input_select.pv_ctrl_mode
+                  name: Mode
+                - entity: input_boolean.pv_ctrl_debug
+                  name: Debug
+                - entity: input_select.pv_ctrl_phase
+                  name: Phase
+                - type: divider
+                - input_number.pv_ctrl_min_export_price
+                - input_number.pv_ctrl_battery_capacity
+                - input_number.pv_ctrl_solcast_forecast_balance
+              state_color: false
+          - type: custom:restriction-card
+            condition:
+              entity: input_boolean.pv_ctrl_edit_mode
+              value: 'off'
+            restrictions:
+              block: true
+            card:
+              type: entities
+              entities:
+                - input_number.pv_ctrl_soc_limit_morning
+                - input_number.pv_ctrl_soc_limit_evening
+                - entity: input_number.pv_ctrl_min_suncast_current_day
+                  name: Min Sun Today
+                - entity: input_number.pv_ctrl_min_suncast_next_day
+                  name: Min Sun Tomorrow
+                - type: divider
+                - input_number.pv_ctrl_charge_velocity
+                - entity: input_datetime.pv_ctrl_charge_delay_time_limit
+                  name: Charging End Time
+                - entity: input_number.pv_ctrl_charge_forecast_overhead
+                  name: Charge Overhead
+                - entity: input_number.pv_ctrl_charge_delay_min_soc
+                  name: Min SOC for Delay
+                - type: divider
+                - input_number.pv_ctrl_discharge_velocity
+              state_color: false
+        column_span: 1
+    cards: []
+  - title: Wattsonic
+    layout: {}
+    badges: []
+    cards: []
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            icon: mdi:fridge
+            heading: Wattsonic Inverter
+            heading_style: title
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_inverter_running_status_text
+              - entity: sensor.wattsonic_hybrid_inverter_working_mode_setting_text
+              - entity: sensor.wattsonic_total_purchasing_energy_from_grid_on_meter
+              - entity: sensor.wattsonic_total_power_on_meter
+              - entity: sensor.wattsonic_total_pv_generation_from_installation
+              - entity: sensor.wattsonic_total_pv_generation_on_that_day
+                name: asi priamo do domu nie do batt
+              - entity: sensor.wattsonic_pv_input_total_power
+              - entity: sensor.wattsonic_phase_a_power_on_meter
+              - entity: sensor.wattsonic_phase_b_power_on_meter
+              - entity: sensor.wattsonic_phase_c_power_on_meter
+              - entity: sensor.wattsonic_total_backup_p
+              - entity: sensor.wattsonic_p_ac
+              - entity: sensor.wattsonic_arm_fault_flag1
+              - entity: sensor.wattsonic_fault_flag1
+              - entity: sensor.wattsonic_fault_flag2
+              - entity: sensor.wattsonic_fault_flag3
+              - type: divider
+              - entity: sensor.wattsonic_inverter_firmware_text
+                name: Wattsonic Inverter FW Version
+              - entity: sensor.wattsonic_inverter_sn
+            title: Wattsonic basic
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_battery_soc
+              - entity: sensor.wattsonic_battery_mode_text
+              - entity: sensor.wattsonic_battery_p
+              - entity: sensor.wattsonic_battery_i
+              - entity: sensor.wattsonic_battery_v
+              - entity: sensor.wattsonic_bms_pack_temperature
+              - entity: sensor.wattsonic_battery_soh
+              - entity: sensor.wattsonic_bms_error_code
+              - entity: sensor.wattsonic_bms_warn_code
+              - entity: sensor.wattsonic_rw_bms_errorcode
+              - entity: sensor.wattsonic_rw_bms_protectioncode
+              - entity: sensor.wattsonic_rw_bms_status
+              - entity: sensor.wattsonic_rw_bms_warncode
+              - type: divider
+              - entity: sensor.wattsonic_bms_firmware_version_text
+                name: Wattsonic BMS Firmware Version
+              - entity: sensor.wattsonic_bms_hardware_version
+            title: Battery
+          - type: entities
+            entities:
+              - entity: switch.wattsonic_grid_injection_power_limit_switch
+              - entity: sensor.wattsonic_grid_injection_power_limit_setting
+              - entity: switch.wattsonic_on_grid_battery_soc_protection_switch
+              - entity: sensor.wattsonic_on_grid_battery_end_soc
+              - entity: switch.wattsonic_off_grid_battery_soc_protection_switch
+              - entity: sensor.wattsonic_off_grid_battery_end_soc
+              - entity: switch.wattsonic_priority_power_output_setting
+              - entity: sensor.wattsonic_charge_current_limit
+              - entity: sensor.wattsonic_discharge_current_limit
+              - type: divider
+              - entity: script.wattsonic_mode_general
+                tap_action:
+                  confirmation:
+                    text: are you sure
+                  action: toggle
+            show_header_toggle: false
+            title: Settings
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_pv1_input_power
+              - entity: sensor.wattsonic_pv2_input_power
+              - entity: sensor.wattsonic_temperature_sensor_1
+                name: Inverter Temperature
+              - entity: sensor.wattsonic_temperature_sensor_2
+              - entity: sensor.wattsonic_temperature_sensor_3
+              - entity: sensor.wattsonic_temperature_sensor_4
+              - entity: sensor.wattsonic_pv1_voltage
+              - entity: sensor.wattsonic_pv2_voltage
+              - entity: sensor.wattsonic_pv1_current
+              - entity: sensor.wattsonic_pv2_current
+            title: Panel
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_ecomode_period_enable_flag
+              - entity: sensor.wattsonic_ecomode_period_enable_flag_bin
+              - entity: sensor.wattsonic_ecomode_period1_chargedischarge_setting_text
+                name: Wattsonic Ecomode Period1 Mode
+              - entity: sensor.wattsonic_ecomode_period1_battery_charge_by_text
+                name: Wattsonic Ecomode Period1 Battery Charge By
+              - entity: sensor.wattsonic_ecomode_period1_power_limit
+              - entity: sensor.wattsonic_ecomode_period1_start_time
+              - entity: sensor.wattsonic_ecomode_period1_end_time
+            show_header_toggle: false
+            title: Eco Mode
+          - type: entities
+            entities:
+              - sensor.wattsonic_grid_lines_a_b_voltage
+              - sensor.wattsonic_grid_lines_b_c_voltage
+              - sensor.wattsonic_grid_lines_c_a_voltage
+              - sensor.wattsonic_grid_phase_a_voltage
+              - sensor.wattsonic_grid_phase_b_voltage
+              - sensor.wattsonic_grid_phase_c_voltage
+              - sensor.wattsonic_grid_phase_a_current
+              - sensor.wattsonic_grid_phase_b_current
+              - sensor.wattsonic_grid_phase_c_current
+            title: Grid
+          - type: heading
+            heading: New section
+        column_span: 4
+      - type: grid
+        cards:
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_pv_generation_energy_on_that_day
+              - entity: sensor.wattsonic_grid_injection_energy_on_that_day
+                name: Predaj
+              - entity: sensor.wattsonic_grid_purchasing_energy_on_that_day
+              - entity: sensor.wattsonic_home_consumption_today
+              - entity: sensor.wattsonic_home_consumption_today2
+              - type: button
+                name: Graf
+                icon: mdi:information
+                tap_action:
+                  action: navigate
+                  navigation_path: >-
+                    http://192.168.0.165:8123/api/hassio_ingress/gDENp9QAporNIFKu0DXcQR3_Js3hf9uw_JChvsZajLI/d/759b5bf0-d366-4b42-a879-79826821d211/ote-energy
+            title: Today
+            show_header_toggle: false
+          - type: entities
+            entities:
+              - entity: sensor.wattsonic_grid_injection_energy_on_that_day
+              - entity: sensor.wattsonic_grid_purchasing_energy_on_that_day
+              - entity: sensor.wattsonic_backup_output_energy_on_that_day
+              - entity: sensor.wattsonic_battery_charge_energy_on_that_day
+              - entity: sensor.wattsonic_battery_discharge_energy_on_that_day
+              - entity: sensor.wattsonic_pv_generation_energy_on_that_day
+              - entity: sensor.wattsonic_loading_energy_on_that_day
+                name: asi import do batt today-nie
+              - entity: sensor.wattsonic_energy_purchased_from_grid_on_that_day
+                name: grid import do batt
+              - entity: sensor.wattsonic_total_energy_injected_to_grid
+              - entity: sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+              - entity: sensor.wattsonic_total_output_energy_on_backup_port
+              - entity: sensor.wattsonic_total_energy_charged_to_battery
+              - entity: sensor.wattsonic_total_energy_discharged_from_battery
+              - entity: sensor.wattsonic_total_pv_generation
+              - entity: sensor.wattsonic_total_loading_energy_consumed_at_grid_side
+              - entity: >-
+                  sensor.wattsonic_total_energy_purchased_from_grid_at_inverter_side
+                name: celkovo kune z grid do batt
+            title: Wattsonic 3100
+          - hours_to_show: 12
+            graph: line
+            type: sensor
+            entity: sensor.wattsonic_battery_p
+            detail: 2
+            name: Battery power
+          - hours_to_show: 12
+            graph: line
+            type: sensor
+            entity: sensor.wattsonic_pv_input_total_power
+            detail: 2
+            name: PV power
+          - hours_to_show: 24
+            graph: line
+            type: sensor
+            entity: sensor.wattsonic_total_backup_p
+            detail: 2
+            name: Load power
+          - hours_to_show: 24
+            graph: line
+            type: sensor
+            entity: sensor.wattsonic_total_power_on_meter
+            detail: 2
+            name: Grid power
+        column_span: 4
+      - type: grid
+        cards:
+          - type: custom:history-explorer-card
+            cardName: historycard-91888117
+            combineSameUnits: true
+            defaultTimeRange: 12h
+            showCurrentValues: true
+            legendVisible: true
+            header: hide
+            labelsVisible: true
+            labelAreaWidth: 50
+            decimation: fast
+            lineMode: stepped
+            uiLayout:
+              toolbar: top
+              selector: hide
+            graphs:
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_pv1_input_power
+                  - entity: sensor.wattsonic_pv2_input_power
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_pv1_voltage
+                  - entity: sensor.wattsonic_pv2_voltage
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_temperature_sensor_1
+                  - entity: sensor.wattsonic_temperature_sensor_2
+                  - entity: sensor.wattsonic_temperature_sensor_3
+                  - entity: sensor.wattsonic_temperature_sensor_4
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_battery_soc
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            update_interval: 1m
+            all_series_config:
+              stroke_width: 2
+              group_by:
+                duration: 1m
+                func: avg
+            header:
+              show: true
+              title: PV Input Power
+              show_states: true
+              colorize_states: true
+            series:
+              - entity: sensor.wattsonic_pv1_input_power
+                type: line
+              - entity: sensor.wattsonic_pv2_input_power
+                type: line
+          - type: custom:history-explorer-card
+            cardName: historycard-91888117
+            combineSameUnits: true
+            defaultTimeRange: 12h
+            showCurrentValues: true
+            legendVisible: true
+            header: hide
+            labelsVisible: true
+            labelAreaWidth: 50
+            decimation: fast
+            lineMode: stepped
+            uiLayout:
+              toolbar: top
+              selector: hide
+            graphs:
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_pv1_voltage
+                  - entity: sensor.wattsonic_pv2_voltage
+              - type: line
+                entities:
+                  - entity: sensor.wattsonic_pv1_input_power
+                  - entity: sensor.wattsonic_pv2_input_power
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            update_interval: 10m
+            all_series_config:
+              stroke_width: 2
+              group_by:
+                duration: 15m
+                func: avg
+            stacked: true
+            apex_config:
+              chart:
+                stackOnlyBar: false
+            header:
+              show: true
+              title: ApexCharts-Card
+              show_states: true
+              colorize_states: true
+            series:
+              - entity: sensor.wattsonic_pv1_input_power
+                type: area
+              - entity: sensor.wattsonic_pv2_input_power
+                type: area
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            update_interval: 1m
+            all_series_config:
+              stroke_width: 2
+              group_by:
+                duration: 1m
+                func: avg
+            header:
+              show: true
+              title: PV Voltage
+              show_states: true
+              colorize_states: true
+            series:
+              - entity: sensor.wattsonic_pv1_voltage
+                type: line
+              - entity: sensor.wattsonic_pv2_voltage
+                type: line
+        column_span: 4
+    max_columns: 3
+    visible:
+      - user: 3de09c995d554b57973857046d2d0ee0
+  - title: Home
+    cards: []
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power on SmartMeter
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                    friendly_name: '*Power on Meter'
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    needle: true
+                    max: 7000
+                    min: -7000
+                    segments:
+                      - from: -7000
+                        color: var(--info-color)
+                      - from: 0
+                        color: var(--error-color)
+              exclude:
+                - entity_id: sensor.wattsonic_total_power_on_meter
+            sort:
+              method: name
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power per Phase
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                    friendly_name: Mainhouse*
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+            sort:
+              method: name
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Total Power
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - name: Total Electric Power
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                - name: All standby power
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                - entity_id: sensor.wattsonic_total_power_on_meter
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    needle: true
+                    max: 7000
+                    min: -7000
+                    segments:
+                      - from: -7000
+                        color: var(--info-color)
+                      - from: 0
+                        color: var(--error-color)
+            sort:
+              method: name
+          - type: heading
+            heading: New section
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: HVACs Power
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    needle: true
+                    max: 3500
+                    min: 0
+                  domain: sensor
+                  attributes:
+                    device_class: power
+                    friendly_name: '*HVAC Socket Power*'
+              exclude:
+                - options: {}
+                  entity_id: sensor.wattsonic_total_power_on_meter
+            sort:
+              method: name
+          - type: heading
+            heading: New section
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power usage of devices
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    min: 0
+                    max: 2500
+                    severity:
+                      blue: 50
+                      green: 100
+                      yellow: 200
+                      red: 300
+                  domain: sensor
+                  attributes:
+                    device_class: power
+              exclude:
+                - options: {}
+                  name: Solar production*
+                - options: {}
+                  name: '*HVAC*'
+                - options: {}
+                  name: Solcast*
+                - options: {}
+                  name: '*Wattsonic*'
+                - options: {}
+                  name: '*Mainhouse Phase*'
+                - options: {}
+                  name: '*Cube Phase*'
+                - options: {}
+                  name: Total Electric Power
+                - options: {}
+                  name: All standby power
+                - options: {}
+                  name: Shelly 3EM*
+                - options: {}
+                  name: pg_*
+                - options: {}
+                  state: unavailable
+                - options: {}
+                  state: unknown
+            sort:
+              method: name
+          - type: heading
+            heading: New section
+        column_span: 1
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              square: false
+              type: grid
+              title: Unavailable devices
+              columns: 1
+            card_param: cards
+            filter:
+              include:
+                - options:
+                    type: entity
+                  domain: sensor
+                  state: unavailable
+                  attributes:
+                    device_class: power
+                - options:
+                    type: entity
+                  domain: sensor
+                  state: unknown
+                  attributes:
+                    device_class: power
+              exclude:
+                - options: {}
+                  name: Solar production*
+                - options: {}
+                  name: '*HVAC*'
+                - options: {}
+                  name: Solcast*
+                - options: {}
+                  name: '*Wattsonic*'
+                - options: {}
+                  name: Total Electric Power
+                - options: {}
+                  name: All standby power
+                - options: {}
+                  name: Shelly 3EM*
+                - options: {}
+                  name: pg_*
+            sort:
+              method: name
+          - type: heading
+            heading: New section
+  - type: sections
+    path: ''
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading_style: subtitle
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power on SmartMeter
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                    friendly_name: '*Power on Meter'
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    needle: true
+                    max: 7000
+                    min: -7000
+                    segments:
+                      - from: -7000
+                        color: var(--error-color)
+                      - from: 0
+                        color: var(--info-color)
+              exclude:
+                - entity_id: sensor.wattsonic_total_power_on_meter
+            sort:
+              method: name
+            layout_options:
+              grid_columns: 4
+              grid_rows: auto
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power per Phase
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                    friendly_name: Shelly 3EM*
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+            sort:
+              method: name
+            layout_options:
+              grid_columns: 4
+              grid_rows: auto
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Total Power
+              columns: 3
+            card_param: cards
+            filter:
+              include:
+                - name: Total Electric Power
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                - name: All standby power
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                - entity_id: sensor.wattsonic_total_power_on_meter
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    needle: true
+                    max: 7000
+                    min: -7000
+                    segments:
+                      - from: -7000
+                        color: var(--error-color)
+                      - from: 0
+                        color: var(--info-color)
+            sort:
+              method: name
+            layout_options:
+              grid_columns: 4
+              grid_rows: auto
+        column_span: 2
+      - type: grid
+        cards:
+          - type: heading
+            heading_style: subtitle
+            visibility:
+              - null
+            heading: ss
+          - type: custom:auto-entities
+            card:
+              type: grid
+              title: Power usage of devices
+              columns: 6
+            card_param: cards
+            filter:
+              include:
+                - domain: sensor
+                  attributes:
+                    device_class: power
+                  options:
+                    type: gauge
+                    aspect_ratio: 1/1
+                    show_state: true
+                    min: 0
+                    max: 2500
+                    severity:
+                      blue: 50
+                      green: 100
+                      yellow: 200
+                      red: 300
+              exclude:
+                - name: Solar production*
+                - name: '*Wattsonic*'
+                - name: Total Electric Power
+                - name: All standby power
+                - name: Shelly 3EM*
+                - name: pg_*
+            sort:
+              method: name
+            layout_options:
+              grid_columns: 8
+              grid_rows: auto
+        column_span: 2
+    dense_section_placement: false
+    cards: []
+  - path: Energy
+    title: Energy
+    cards:
+      - type: energy-date-selection
+      - layout: horizontal
+        height: 600
+        unit_prefix: k
+        round: 1
+        convert_units_to: ''
+        co2_intensity_entity: sensor.co2_signal_co2_intensity
+        gas_co2_intensity: 2351.6459999999997
+        min_box_size: 14
+        min_box_distance: 5
+        show_states: true
+        show_units: true
+        energy_date_selection: true
+        sections: []
+        type: custom:sankey-chart
+        autoconfig:
+          print_yaml: false
+        min_state: 0
+        show_names: true
+        show_icons: false
+        wide: true
+        throttle: 0
+        sort_by: none
+    type: custom:grid-layout
+    icon: ''
+  - path: Energy2
+    title: Energy2
+    cards:
+      - type: energy-date-selection
+      - layout: horizontal
+        height: 600
+        unit_prefix: k
+        round: 1
+        convert_units_to: ''
+        co2_intensity_entity: sensor.co2_signal_co2_intensity
+        gas_co2_intensity: 2351.6459999999997
+        min_box_size: 14
+        min_box_distance: 5
+        show_states: true
+        show_units: true
+        energy_date_selection: true
+        sections:
+          - entities:
+              - entity_id: sensor.wattsonic_pv2_input_energy
+                type: entity
+                color: var(--warning-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_pv1_input_energy
+                type: entity
+                color: var(--warning-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_total_energy_discharged_from_battery
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                type: entity
+                color: var(--success-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                type: entity
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+          - entities:
+              - entity_id: sensor.wattsonic_total_energy_charged_to_battery
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_discharged_from_battery
+                type: entity
+                color: var(--success-color)
+                children: []
+              - entity_id: sensor.wattsonic_total_energy_injected_to_grid
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+                type: entity
+                children: []
+              - entity_id: total
+                type: remaining_parent_state
+                name: Total Consumption
+                children:
+                  - sensor.pg_mainhouse_total_energy_energy
+                  - cube
+                  - no_area
+                  - unknown
+                  - sensor.wattsonic_selfconsumption
+                sort_group_by_parent: true
+          - entities:
+              - entity_id: sensor.pg_mainhouse_total_energy_energy
+                type: remaining_child_state
+                name: MainHouse
+                children:
+                  - floor_0
+                  - floor_1
+                  - floor_2
+                  - remaining_mainhouse
+              - entity_id: cube
+                type: remaining_child_state
+                name: Cube
+                children:
+                  - floor_0_cube
+                  - floor_1_cube
+              - entity_id: no_area
+                type: passthrough
+                children: []
+              - entity_id: unknown
+                type: passthrough
+                children: []
+              - entity_id: sensor.wattsonic_selfconsumption
+          - entities:
+              - entity_id: remaining_mainhouse
+                type: remaining_child_state
+                name: Remaining Mainhouse
+                children: []
+              - entity_id: floor_0
+                type: remaining_child_state
+                name: Floor 0
+                children:
+                  - pantry
+                  - toilet
+                  - 93b56bd1d7e643a9a05cf2bc0f8e314d
+              - entity_id: floor_1
+                type: remaining_child_state
+                name: Floor 1
+                children:
+                  - bathroom
+                  - laundry
+                  - childroom
+                  - bedroom
+              - entity_id: floor_2
+                type: remaining_child_state
+                name: Floor 2
+                children:
+                  - pcroom
+              - entity_id: floor_1_cube
+                type: remaining_child_state
+                name: Floor 1 Cube
+                children:
+                  - sensor.pg_barus_lights_energy
+              - entity_id: floor_0_cube
+                type: remaining_child_state
+                name: Floor 0 Cube
+                children:
+                  - 486bf3d9fc464c91a704012a7c17d22d
+              - entity_id: no_area
+                type: passthrough
+                children: []
+              - entity_id: unknown
+                type: passthrough
+                children: []
+            sort_by: state
+            sort_group_by_parent: true
+          - entities:
+              - entity_id: 486bf3d9fc464c91a704012a7c17d22d
+                type: remaining_child_state
+                name: Livingroom
+                children:
+                  - sensor.tv_power_consumption
+                  - sensor.robo_vacuum_socket_energy
+                  - sensor.pg_lights_livingroom_energy
+              - entity_id: bathroom
+                type: remaining_child_state
+                name: Bathroom
+                children:
+                  - sensor.washing_machine_power_consumption
+                  - sensor.bathroom_socket_energy
+                  - sensor.bathroom_energy
+              - entity_id: bedroom
+                type: remaining_child_state
+                name: Bedroom
+                children:
+                  - sensor.pg_bedroom_energy
+                  - sensor.pg_bedroom_socket_energy
+              - entity_id: childroom
+                type: remaining_child_state
+                name: Childroom
+                children:
+                  - sensor.pg_childroom_lights_energy
+              - entity_id: pcroom
+                type: remaining_child_state
+                name: PCroom
+                children:
+                  - sensor.pc_room_socket_1_energy
+                  - sensor.pc_room_socket_2_energy
+                  - sensor.pc_room_light_device_energy
+              - entity_id: pantry
+                type: remaining_child_state
+                name: Pantry
+                children:
+                  - sensor.plugs_fridge_energy
+                  - sensor.pantry_energy
+              - entity_id: toilet
+                type: remaining_child_state
+                name: Toilet
+                children:
+                  - sensor.plugs_1_boiler_energy
+                  - sensor.wc_energy
+              - entity_id: 93b56bd1d7e643a9a05cf2bc0f8e314d
+                type: remaining_child_state
+                name: Kitchen
+                children:
+                  - sensor.dishwasher_power_consumption
+                  - sensor.kitchen_socket_2_power_consumption
+                  - sensor.oven_power_consumption
+                  - sensor.pg_kitchen_lights_energy
+              - entity_id: laundry
+                type: remaining_child_state
+                name: Laundry
+                children:
+                  - sensor.dryer_socket_energy
+                  - sensor.laundry_light_device_energy
+              - entity_id: no_area
+                type: remaining_child_state
+                name: No area
+                children:
+                  - sensor.pg_entein_lights_energy
+                  - sensor.robo_vacuum_socket_energy
+                  - sensor.all_standby_energy
+              - entity_id: unknown
+                type: remaining_parent_state
+                name: Unknown
+                children: []
+            sort_by: state
+            sort_group_by_parent: true
+          - entities:
+              - entity_id: sensor.tv_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.robo_vacuum_socket_energy
+                type: entity
+                name: RoboVacuum
+                children: []
+              - entity_id: sensor.pg_lights_livingroom_energy
+                type: entity
+                name: Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.washing_machine_power_consumption
+                type: entity
+                name: Washer
+                children: []
+              - entity_id: sensor.bathroom_socket_energy
+                type: entity
+                name: Bathroom Socket
+                children: []
+              - entity_id: sensor.bathroom_energy
+                type: entity
+                name: Light
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.pc_room_socket_1_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pc_room_socket_2_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pc_room_light_device_energy
+                type: entity
+                name: Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.plugs_fridge_energy
+                type: entity
+                name: Fridge
+                children: []
+              - entity_id: sensor.pantry_energy
+                type: entity
+                name: Light
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.plugs_1_boiler_energy
+                type: entity
+                children: []
+              - entity_id: sensor.wc_energy
+                name: Lights
+                type: entity
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.dishwasher_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.kitchen_socket_2_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.oven_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.pg_kitchen_lights_energy
+                name: Lights
+                type: entity
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.dryer_socket_energy
+                type: entity
+                name: Dryer
+                children: []
+              - entity_id: sensor.laundry_light_device_energy
+                type: entity
+                name: Light
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.pg_entein_lights_energy
+                type: entity
+                name: Entein Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.robo_vacuum_socket_energy
+                type: entity
+                children: []
+              - entity_id: sensor.all_standby_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pg_bedroom_energy
+                type: entity
+                children: []
+                name: Lights
+              - entity_id: sensor.pg_bedroom_socket_energy
+                type: entity
+                name: Socket
+                children: []
+              - entity_id: sensor.pg_childroom_lights_energy
+                type: entity
+                name: ' '
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.pg_barus_lights_energy
+                type: entity
+                name: Lights
+                color: var(--warning-color)
+                children: []
+            sort_by: state
+            sort_group_by_parent: true
+        type: custom:sankey-chart
+        min_state: 0
+        show_names: true
+        show_icons: false
+        wide: true
+        throttle: 0
+        sort_by: none
+    type: custom:grid-layout
+    icon: ''
+  - path: E3
+    title: E3
+    cards:
+      - type: energy-date-selection
+      - layout: horizontal
+        height: 600
+        unit_prefix: k
+        round: 1
+        convert_units_to: ''
+        co2_intensity_entity: sensor.co2_signal_co2_intensity
+        gas_co2_intensity: 2351.6459999999997
+        min_box_size: 14
+        min_box_distance: 5
+        show_states: true
+        show_units: true
+        energy_date_selection: true
+        sections:
+          - entities:
+              - entity_id: sensor.wattsonic_pv2_input_energy
+                type: entity
+                color: var(--warning-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_pv1_input_energy
+                type: entity
+                color: var(--warning-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_total_energy_discharged_from_battery
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                type: entity
+                color: var(--success-color)
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+              - entity_id: sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                type: entity
+                children:
+                  - sensor.wattsonic_total_energy_charged_to_battery
+                  - sensor.wattsonic_total_energy_injected_to_grid
+                  - total
+          - entities:
+              - entity_id: sensor.wattsonic_total_energy_charged_to_battery
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_discharged_from_battery
+                type: entity
+                color: var(--success-color)
+                children: []
+              - entity_id: sensor.wattsonic_total_energy_injected_to_grid
+                subtract_entities:
+                  - sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+                type: entity
+                children: []
+              - entity_id: total
+                type: remaining_parent_state
+                name: Total Consumption
+                children:
+                  - sensor.wattsonic_selfconsumption
+                  - mainhouse
+                  - cube
+                  - no_area
+                  - unknown
+                sort_group_by_parent: true
+          - entities:
+              - entity_id: mainhouse
+                type: remaining_child_state
+                name: MainHouse
+                children:
+                  - floor_0
+                  - floor_1
+                  - floor_2
+              - entity_id: cube
+                type: remaining_child_state
+                name: Cube
+                children:
+                  - floor_0_cube
+                  - floor_1_cube
+              - entity_id: no_area
+                type: passthrough
+                children: []
+              - entity_id: unknown
+                type: passthrough
+                children: []
+          - entities:
+              - entity_id: floor_0
+                type: remaining_child_state
+                name: Floor 0
+                children:
+                  - pantry
+                  - toilet
+                  - 93b56bd1d7e643a9a05cf2bc0f8e314d
+              - entity_id: floor_1
+                type: remaining_child_state
+                name: Floor 1
+                children:
+                  - bathroom
+                  - laundry
+                  - childroom
+                  - bedroom
+              - entity_id: floor_2
+                type: remaining_child_state
+                name: Floor 2
+                children:
+                  - pcroom
+              - entity_id: floor_1_cube
+                type: remaining_child_state
+                name: Floor 1 Cube
+                children: []
+              - entity_id: floor_0_cube
+                type: remaining_child_state
+                name: Floor 0 Cube
+                children:
+                  - 486bf3d9fc464c91a704012a7c17d22d
+              - entity_id: no_area
+                type: passthrough
+                children: []
+              - entity_id: unknown
+                type: passthrough
+                children: []
+            sort_by: state
+            sort_group_by_parent: true
+          - entities:
+              - entity_id: 486bf3d9fc464c91a704012a7c17d22d
+                type: remaining_child_state
+                name: Livingroom
+                children:
+                  - sensor.tv_power_consumption
+                  - sensor.robo_vacuum_socket_energy
+                  - sensor.pg_lights_livingroom_energy
+              - entity_id: bathroom
+                type: remaining_child_state
+                name: Bathroom
+                children:
+                  - sensor.washing_machine_power_consumption
+                  - sensor.bathroom_socket_energy
+                  - sensor.bathroom_energy
+              - entity_id: bedroom
+                type: remaining_child_state
+                name: Bedroom
+                children:
+                  - sensor.pg_bedroom_energy
+                  - sensor.pg_bedroom_socket_energy
+                  - sensor.bedroom_hvac_socket_energy
+              - entity_id: childroom
+                type: remaining_child_state
+                name: Childroom
+                children:
+                  - sensor.pg_childroom_lights_energy
+                  - sensor.childroom_hvac_socket_energy
+              - entity_id: pcroom
+                type: remaining_child_state
+                name: PCroom
+                children:
+                  - sensor.pc_room_socket_1_energy
+                  - sensor.pc_room_socket_2_energy
+                  - sensor.pg_pcroom_lights_energy
+                  - sensor.pcroom_hvac_socket_energy
+              - entity_id: pantry
+                type: remaining_child_state
+                name: Pantry
+                children:
+                  - sensor.plugs_fridge_energy
+                  - sensor.pantry_energy
+              - entity_id: toilet
+                type: remaining_child_state
+                name: Toilet
+                children:
+                  - sensor.boiler_electric_consumption
+                  - sensor.wc_energy
+              - entity_id: 93b56bd1d7e643a9a05cf2bc0f8e314d
+                type: remaining_child_state
+                name: Kitchen
+                children:
+                  - sensor.dishwasher_power_consumption
+                  - sensor.kitchen_socket_2_power_consumption
+                  - sensor.oven_power_consumption
+                  - sensor.pg_kitchen_lights_energy
+              - entity_id: laundry
+                type: remaining_child_state
+                name: Laundry
+                children:
+                  - sensor.dryer_socket_energy
+              - entity_id: no_area
+                type: remaining_child_state
+                name: No area
+                children:
+                  - sensor.pg_entein_lights_energy
+                  - sensor.microwave_socket_energy
+                  - sensor.all_standby_energy
+              - entity_id: unknown
+                type: remaining_parent_state
+                name: Unknown
+                children: []
+              - entity_id: sensor.wattsonic_selfconsumption
+                children: []
+                name: FVE-self
+            sort_by: state
+            sort_group_by_parent: true
+          - entities:
+              - entity_id: sensor.tv_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.robo_vacuum_socket_energy
+                type: entity
+                name: RoboVacuum
+                children: []
+              - entity_id: sensor.pg_lights_livingroom_energy
+                type: entity
+                name: Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.washing_machine_power_consumption
+                type: entity
+                name: Washer
+                children: []
+              - entity_id: sensor.bathroom_socket_energy
+                type: entity
+                name: Bathroom Socket
+                children: []
+              - entity_id: sensor.bathroom_energy
+                type: entity
+                name: Light
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.pc_room_socket_1_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pc_room_socket_2_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pg_pcroom_lights_energy
+                type: entity
+                name: Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.plugs_fridge_energy
+                type: entity
+                name: Fridge
+                children: []
+              - entity_id: sensor.pantry_energy
+                type: entity
+                name: Light
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.boiler_electric_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.wc_energy
+                name: Lights
+                type: entity
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.dishwasher_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.kitchen_socket_2_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.oven_power_consumption
+                type: entity
+                children: []
+              - entity_id: sensor.pg_kitchen_lights_energy
+                name: Lights
+                type: entity
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.dryer_socket_energy
+                type: entity
+                name: Dryer
+                children: []
+              - entity_id: sensor.pg_entein_lights_energy
+                type: entity
+                name: Entein Lights
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.microwave_socket_energy
+                type: entity
+                children: []
+              - entity_id: sensor.all_standby_energy
+                type: entity
+                children: []
+              - entity_id: sensor.pg_bedroom_energy
+                type: entity
+                children: []
+                name: Lights
+              - entity_id: sensor.pg_bedroom_socket_energy
+                type: entity
+                name: Socket
+                children: []
+              - entity_id: sensor.pg_childroom_lights_energy
+                type: entity
+                name: ' '
+                color: var(--warning-color)
+                children: []
+              - entity_id: sensor.pcroom_hvac_socket_energy
+                type: entity
+                name: HVAC
+                children: []
+                color: green
+              - entity_id: sensor.childroom_hvac_socket_energy
+                type: entity
+                name: HVAC
+                children: []
+                color: green
+              - entity_id: sensor.bedroom_hvac_socket_energy
+                type: entity
+                name: HVAC
+                color: green
+                children: []
+            sort_by: state
+            sort_group_by_parent: true
+        type: custom:sankey-chart
+        min_state: 0
+        show_names: true
+        show_icons: false
+        wide: true
+        throttle: 0
+        sort_by: none
+    type: custom:grid-layout
+    icon: ''
+  - title: FVE
+    layout: {}
+    badges: []
+    cards:
+      - show_name: true
+        show_icon: true
+        type: button
+        tap_action:
+          action: perform-action
+          perform_action: script.wattsonic_inject_from_the_battery_to_the_grid
+          target: {}
+        name: Discharge to Grid
+        icon: mdi:transmission-tower-import
+        show_state: false
+      - show_name: true
+        show_icon: true
+        type: button
+        tap_action:
+          action: perform-action
+          perform_action: script.wattsonic_mode_general
+          target: {}
+        icon: mdi:transmission-tower
+        show_state: false
+        name: Normal mode
+      - type: custom:power-flow-card-plus
+        title: Distribution
+        w_decimals: 2
+        kw_decimals: 2
+        watt_threshold: 999
+        clickable_entities: true
+        entities:
+          home:
+            entity: sensor.wattsonic_home_consumption_now
+            subtract_individual: false
+            override_state: true
+            use_metadata: false
+          grid:
+            color_circle: true
+            color_value: false
+            invert_state: true
+            display_state: one_way
+            entity: sensor.wattsonic_total_power_on_meter
+          solar:
+            entity: sensor.wattsonic_pv_input_total_power
+            icon: mdi:weather-sunny
+          battery:
+            state_of_charge: sensor.wattsonic_battery_soc
+            entity: sensor.wattsonic_battery_p_w
+            show_state_of_charge: true
+            state_of_charge_unit_white_space: false
+            color_circle: true
+            use_metadata: false
+          fossil_fuel_percentage:
+            secondary_info: {}
+            use_metadata: false
+            unit_white_space: true
+        inverted_entities: grid
+        use_new_flow_rate_model: true
+        display_zero_lines:
+          mode: transparency
+          transparency: 80
+          grey_color:
+            - 189
+            - 189
+            - 189
+        disable_dots: false
+        sort_individual_devices: false
+      - type: custom:apexcharts-card
+        graph_span: 6h
+        span:
+          end: hour
+        update_interval: 10m
+        all_series_config:
+          stroke_width: 2
+          group_by:
+            duration: 15m
+            func: max
+        yaxis:
+          - max: 6
+        header:
+          show: true
+          title: ApexCharts-Card
+          show_states: true
+          colorize_states: true
+        apex_config:
+          annotations:
+            yaxis:
+              - 'y': 1.25
+              - strokeDashArray: 4,
+              - borderColor: red
+              - offsetY: 23
+        series:
+          - entity: sensor.wattsonic_total_power_on_meter
+            type: column
+            group_by:
+              duration: 15m
+              func: max
+          - entity: sensor.total_energy_on_meter
+            type: column
+            stroke_width: 5
+            group_by:
+              duration: 15m
+              func: diff
+      - type: custom:apexcharts-card
+        update_interval: 1min
+        header:
+          show: true
+          title: Electricity spot price
+          show_states: true
+          colorize_states: true
+        graph_span: 48h
+        span:
+          start: day
+        now:
+          show: true
+          label: Now
+          color: '#448866'
+        series:
+          - entity: sensor.current_spot_electricity_price_15min
+            name: Spot price
+            type: line
+            data_generator: |
+              const src = hass.states['sensor.today_spot_electricity_prices'];
+              if (!src || !src.attributes.data) return [];
+
+              return src.attributes.data.map((item) => {
+                return [
+                  new Date(item.time).getTime(),
+                  item.price
+                ];
+              });
+            stroke_width: 1
+            curve: stepline
+        apex_config:
+          xaxis:
+            type: datetime
+          annotations:
+            xaxis:
+              - x: EVAL:new Date().setHours(24,0,0,0)
+                borderColor: '#888888'
+                strokeDashArray: 1
+                label:
+                  text: Tomorrow
+            yaxis:
+              - 'y': 0.25
+                borderColor: '#00AA00'
+                strokeDashArray: 4
+                label:
+                  text: 0.25 threshold
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_pv_generation_energy_on_that_day
+          - entity: sensor.wattsonic_grid_injection_energy_on_that_day
+            name: Predaj
+          - entity: sensor.wattsonic_grid_purchasing_energy_on_that_day
+          - entity: sensor.wattsonic_home_consumption_today
+          - entity: sensor.wattsonic_home_consumption_today2
+          - type: button
+            name: Graf
+            icon: mdi:information
+            tap_action:
+              action: navigate
+              navigation_path: >-
+                http://192.168.0.165:8123/api/hassio_ingress/gDENp9QAporNIFKu0DXcQR3_Js3hf9uw_JChvsZajLI/d/759b5bf0-d366-4b42-a879-79826821d211/ote-energy
+        title: Today
+        show_header_toggle: false
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_inverter_sn
+          - entity: sensor.wattsonic_inverter_firmware_text
+            name: Wattsonic Inverter FW Version
+          - entity: sensor.wattsonic_inverter_running_status_text
+          - entity: sensor.wattsonic_hybrid_inverter_working_mode_setting_text
+          - entity: sensor.wattsonic_total_purchasing_energy_from_grid_on_meter
+          - entity: sensor.wattsonic_total_power_on_meter
+          - entity: sensor.wattsonic_total_pv_generation_from_installation
+          - entity: sensor.wattsonic_total_pv_generation_on_that_day
+            name: asi priamo do domu nie do batt
+          - entity: sensor.wattsonic_pv_input_total_power
+          - entity: sensor.wattsonic_phase_a_power_on_meter
+          - entity: sensor.wattsonic_phase_b_power_on_meter
+          - entity: sensor.wattsonic_phase_c_power_on_meter
+          - entity: sensor.wattsonic_total_backup_p
+          - entity: sensor.wattsonic_p_ac
+          - entity: sensor.wattsonic_arm_fault_flag1
+          - entity: sensor.wattsonic_fault_flag1
+          - entity: sensor.wattsonic_fault_flag2
+          - entity: sensor.wattsonic_fault_flag3
+        title: Wattsonic basic
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_grid_injection_energy_on_that_day
+          - entity: sensor.wattsonic_grid_purchasing_energy_on_that_day
+          - entity: sensor.wattsonic_backup_output_energy_on_that_day
+          - entity: sensor.wattsonic_battery_charge_energy_on_that_day
+          - entity: sensor.wattsonic_battery_discharge_energy_on_that_day
+          - entity: sensor.wattsonic_pv_generation_energy_on_that_day
+          - entity: sensor.wattsonic_loading_energy_on_that_day
+            name: asi import do batt today-nie
+          - entity: sensor.wattsonic_energy_purchased_from_grid_on_that_day
+            name: grid import do batt
+          - entity: sensor.wattsonic_total_energy_injected_to_grid
+          - entity: sensor.wattsonic_total_energy_purchased_from_grid_from_meter
+          - entity: sensor.wattsonic_total_output_energy_on_backup_port
+          - entity: sensor.wattsonic_total_energy_charged_to_battery
+          - entity: sensor.wattsonic_total_energy_discharged_from_battery
+          - entity: sensor.wattsonic_total_pv_generation
+          - entity: sensor.wattsonic_total_loading_energy_consumed_at_grid_side
+          - entity: sensor.wattsonic_total_energy_purchased_from_grid_at_inverter_side
+            name: celkovo kune z grid do batt
+        title: Wattsonic 3100
+      - type: entities
+        entities:
+          - sensor.wattsonic_grid_lines_a_b_voltage
+          - sensor.wattsonic_grid_lines_b_c_voltage
+          - sensor.wattsonic_grid_lines_c_a_voltage
+          - sensor.wattsonic_grid_phase_a_voltage
+          - sensor.wattsonic_grid_phase_b_voltage
+          - sensor.wattsonic_grid_phase_c_voltage
+          - sensor.wattsonic_grid_phase_a_current
+          - sensor.wattsonic_grid_phase_b_current
+          - sensor.wattsonic_grid_phase_c_current
+        title: Grid
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_battery_soc
+          - entity: sensor.wattsonic_battery_mode_text
+          - entity: sensor.wattsonic_battery_p
+          - entity: sensor.wattsonic_battery_i
+          - entity: sensor.wattsonic_battery_v
+          - entity: sensor.wattsonic_bms_pack_temperature
+          - entity: sensor.wattsonic_battery_soh
+          - entity: sensor.wattsonic_bms_error_code
+          - entity: sensor.wattsonic_bms_warn_code
+          - entity: sensor.wattsonic_rw_bms_errorcode
+          - entity: sensor.wattsonic_rw_bms_protectioncode
+          - entity: sensor.wattsonic_rw_bms_status
+          - entity: sensor.wattsonic_rw_bms_warncode
+          - entity: sensor.wattsonic_bms_firmware_version_text
+            name: Wattsonic BMS Firmware Version
+          - entity: sensor.wattsonic_bms_hardware_version
+        title: Battery
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_pv1_input_power
+          - entity: sensor.wattsonic_pv2_input_power
+          - entity: sensor.wattsonic_temperature_sensor_1
+            name: Inverter Temperature
+          - entity: sensor.wattsonic_temperature_sensor_2
+          - entity: sensor.wattsonic_temperature_sensor_3
+          - entity: sensor.wattsonic_temperature_sensor_4
+          - entity: sensor.wattsonic_pv1_voltage
+          - entity: sensor.wattsonic_pv2_voltage
+          - entity: sensor.wattsonic_pv1_current
+          - entity: sensor.wattsonic_pv2_current
+        title: Panel
+      - hours_to_show: 12
+        graph: line
+        type: sensor
+        entity: sensor.wattsonic_battery_p
+        detail: 2
+        name: Battery power
+      - hours_to_show: 12
+        graph: line
+        type: sensor
+        entity: sensor.wattsonic_pv_input_total_power
+        detail: 2
+        name: PV power
+      - hours_to_show: 24
+        graph: line
+        type: sensor
+        entity: sensor.wattsonic_total_backup_p
+        detail: 2
+        name: Load power
+      - hours_to_show: 24
+        graph: line
+        type: sensor
+        entity: sensor.wattsonic_total_power_on_meter
+        detail: 2
+        name: Grid power
+      - type: entities
+        entities:
+          - entity: switch.wattsonic_grid_injection_power_limit_switch
+          - entity: sensor.wattsonic_grid_injection_power_limit_setting
+          - entity: switch.wattsonic_on_grid_battery_soc_protection_switch
+          - entity: sensor.wattsonic_on_grid_battery_end_soc
+          - entity: switch.wattsonic_off_grid_battery_soc_protection_switch
+          - entity: sensor.wattsonic_off_grid_battery_end_soc
+          - entity: switch.wattsonic_priority_power_output_setting
+        title: Wattsonic RW
+        show_header_toggle: false
+      - type: entities
+        entities:
+          - entity: sensor.wattsonic_ecomode_period_enable_flag
+          - entity: sensor.wattsonic_ecomode_period_enable_flag_bin
+          - entity: sensor.wattsonic_ecomode_period1_chargedischarge_setting
+          - entity: sensor.wattsonic_ecomode_period1_battery_charge_by
+          - entity: sensor.wattsonic_ecomode_period1_power_limit
+          - entity: sensor.wattsonic_ecomode_period1_start_time
+          - entity: sensor.wattsonic_ecomode_period1_end_time
+        show_header_toggle: false
+      - type: custom:history-explorer-card
+        cardName: historycard-91888117
+        combineSameUnits: true
+        defaultTimeRange: 12h
+        showCurrentValues: true
+        legendVisible: true
+        header: hide
+        labelsVisible: true
+        labelAreaWidth: 50
+        decimation: fast
+        lineMode: stepped
+        uiLayout:
+          toolbar: top
+          selector: hide
+        graphs:
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_pv1_input_power
+              - entity: sensor.wattsonic_pv2_input_power
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_pv1_voltage
+              - entity: sensor.wattsonic_pv2_voltage
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_temperature_sensor_1
+              - entity: sensor.wattsonic_temperature_sensor_2
+              - entity: sensor.wattsonic_temperature_sensor_3
+              - entity: sensor.wattsonic_temperature_sensor_4
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_battery_soc
+      - type: custom:history-explorer-card
+        cardName: historycard-91888117
+        combineSameUnits: true
+        defaultTimeRange: 12h
+        showCurrentValues: true
+        legendVisible: true
+        header: hide
+        labelsVisible: true
+        labelAreaWidth: 50
+        decimation: fast
+        lineMode: stepped
+        uiLayout:
+          toolbar: top
+          selector: hide
+        graphs:
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_pv1_voltage
+              - entity: sensor.wattsonic_pv2_voltage
+          - type: line
+            entities:
+              - entity: sensor.wattsonic_pv1_input_power
+              - entity: sensor.wattsonic_pv2_input_power
+      - type: custom:apexcharts-card
+        graph_span: 24h
+        update_interval: 1m
+        all_series_config:
+          stroke_width: 2
+          group_by:
+            duration: 1m
+            func: avg
+        header:
+          show: true
+          title: PV Voltage
+          show_states: true
+          colorize_states: true
+        series:
+          - entity: sensor.wattsonic_pv1_voltage
+            type: line
+          - entity: sensor.wattsonic_pv2_voltage
+            type: line
+      - type: custom:apexcharts-card
+        graph_span: 24h
+        update_interval: 10m
+        all_series_config:
+          stroke_width: 2
+          group_by:
+            duration: 15m
+            func: avg
+        stacked: true
+        apex_config:
+          chart:
+            stackOnlyBar: false
+        header:
+          show: true
+          title: ApexCharts-Card
+          show_states: true
+          colorize_states: true
+        series:
+          - entity: sensor.wattsonic_pv1_input_power
+            type: area
+          - entity: sensor.wattsonic_pv2_input_power
+            type: area
+      - type: custom:apexcharts-card
+        graph_span: 24h
+        update_interval: 1m
+        all_series_config:
+          stroke_width: 2
+          group_by:
+            duration: 1m
+            func: avg
+        header:
+          show: true
+          title: PV Input Power
+          show_states: true
+          colorize_states: true
+        series:
+          - entity: sensor.wattsonic_pv1_input_power
+            type: line
+          - entity: sensor.wattsonic_pv2_input_power
+            type: line
