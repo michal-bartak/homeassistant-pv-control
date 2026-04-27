@@ -111,7 +111,7 @@ pv_ctrl_control:
       options:
         - General
         - Morning Discharge
-        - Delayed Charge
+        - Charge Delay
         - Cheapest Charge
         - Evening Discharge
     pv_ctrl_mode:
@@ -271,7 +271,7 @@ pv_ctrl_control:
 
             {% for p in prices %}
               {% set t = as_datetime(p.time) %}
-              {% set price = p.price | float(0) if p.price | float(0) > min_export_price else min_export_price %}
+              {% set price = p.price | float(0) if p.price | float(0) > min_export_price else 0 %}
 
               {# namespace for pv #}
               {% set pv_ns = namespace(val=0) %}
@@ -288,8 +288,8 @@ pv_ctrl_control:
               {% set ns.data = ns.data + [{
                 'time': t,
                 'price': price,
-                'pv_estimate': pv_ns.val,
-                'pv_price': pv_ns.val * price
+                'pv_estimate': pv_ns.val / 2,
+                'pv_price': (pv_ns.val / 2) * price
               }] %}
             {% endfor %}
 
@@ -298,20 +298,18 @@ pv_ctrl_control:
             {% for i in range(ns.data | count) %}
               {% set energy_ns = namespace(val=0) %}
               {% set cost_ns = namespace(val=0) %}
-              {% set en_cover = to_charge -%}
+              {% set en_cover = to_charge %}
 
               {% for j in range(i, ns.data | count) %}
                 {% set item = ns.data[j] %}
 
                 {# usable power is limited by charger #}
-                {% set usable_power = [item.pv_estimate, charge_power_cap] | min -%}
-                {% set energy = usable_power * price_interval_multiplier -%}
+                {% set usable_power = [item.pv_estimate, charge_cap_per_price_interval] | min %}
+                {% set en_to_process = en_cover if en_cover < usable_power else usable_power %}
+                {% set en_cover = en_cover - en_to_process %}
 
-                {% set en_to_process = en_cover if en_cover < energy else energy -%}
-                {% set en_cover = en_cover - en_to_process -%}
-
-                {% set energy_ns.val = energy_ns.val + en_to_process -%}
-                {% set cost_ns.val = cost_ns.val + (en_to_process * item.price) -%}
+                {% set energy_ns.val = energy_ns.val + en_to_process %}
+                {% set cost_ns.val = cost_ns.val + (en_to_process * item.price) %}
 
                 {% if energy_ns.val >= to_charge %}
                   {% if cost_ns.val < best.cost %}
@@ -745,12 +743,12 @@ pv_ctrl_control:
                 and forecast_today > min_pv_forecast_currentday
                 and soc <= 95
                 and soc > min_soc_delayed_charge %}
-            Delayed Charge
+            Charge Delay
 
           {% elif mode == 'Cheapest Charge' and (soc > 99 or (cheapest_time_end is not none and now() >= as_datetime(cheapest_time_end))) %}
             General
 
-          {% elif mode == 'Delayed Charge' and soc > 99 %}
+          {% elif mode == 'Charge Delay' and soc > 99 %}
             General
 
           {% elif mode == 'Evening Discharge' and soc <= min_soc_evening %}
@@ -765,7 +763,7 @@ pv_ctrl_control:
               state: "Active"
             - condition: template
               alias: "Execute only on mode change"
-              value_template: "{{ next_mode != mode or next_mode == 'Delayed Charge' and trigger.alias == 'price_change' }}"
+              value_template: "{{ next_mode != mode or next_mode == 'Charge Delay' and trigger.alias == 'price_change' }}"
           then:
             - choose:
                 - conditions: "{{ next_mode == 'General' }}"
@@ -792,7 +790,7 @@ pv_ctrl_control:
                       data:
                         mode: general
 
-                - conditions: "{{ next_mode == 'Delayed Charge' }}"
+                - conditions: "{{ next_mode == 'Charge Delay' }}"
                   sequence:
                     - choose:
                         - conditions: "{{ current_price <= min_export_price }}"
@@ -814,7 +812,7 @@ pv_ctrl_control:
                 - "Dry Run"
             - condition: template
               alias: "Execute only on mode change"
-              value_template: "{{ next_mode != mode or next_mode == 'Delayed Charge' and trigger.alias == 'price_change' }}"
+              value_template: "{{ next_mode != mode or next_mode == 'Charge Delay' and trigger.alias == 'price_change' }}"
           then:
             action: input_select.select_option
             target:

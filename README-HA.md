@@ -41,7 +41,7 @@ While it could be limited to a single discharge, splitting it into two has benef
 * Splitting provides better margin management
 * Morning PV forecast allows a last-minute decision to skip the morning discharge
 
-Discharging must not result in an energy deficit later. Therefore, no discharge is triggered if insufficient PV energy is forecasted. At the same time, minimum battery levels must be maintained. This also includes support for the "Delayed Charge" time period.
+Discharging must not result in an energy deficit later. Therefore, no discharge is triggered if insufficient PV energy is forecasted. At the same time, minimum battery levels must be maintained. This also includes support for the "Charge Delay" time period.
 
 The configuration of edge conditions may differ between installations. It should be set with a safe margin to avoid buying energy.
 
@@ -110,7 +110,7 @@ Both are implemented as input entities. Automation state represents the current 
 | `input_boolean.pv_ctrl_edit_mode`            | Used for dashboard only, preventing accidental changes to the settings. It's especially important for mobile views, where current HA UI makes an accidental change of parameters more then likely |
 | `input_select.pv_ctrl_mode`                  | Allows to enable the automation either in `real` or `dry mode`, or `disable` it. The `Dry-run` does everything but requesting changes to the inverter. It's good to test if the automation phases proceed as expected. |
 | `input_boolean.pv_ctrl_debug`                | Toggles recording the debug informations to the Home Assistant log |
-| `input_select.pv_ctrl_phase`                 | Represents the current automation phase (not intended for manual editing). Possible values are `General`, `Morning Discharge`, `Delayed Charge`, `Cheapest Charge`, `Evening Discharge`. |
+| `input_select.pv_ctrl_phase`                 | Represents the current automation phase (not intended for manual editing). Possible values are `General`, `Morning Discharge`, `Charge Delay`, `Cheapest Charge`, `Evening Discharge`. |
 | `input_number.pv_ctrl_min_suncast_current_day` | Minimum forecasted energy for today; required for the morning discharge |
 | `input_number.pv_ctrl_min_suncast_next_day` | Minimum forecasted energy for tomorrow; required for the evening discharge |
 | `input_number.pv_ctrl_soc_limit_morning`    | SOC limit for morning discharge |
@@ -179,5 +179,5 @@ These are set of template sensors that prepare and optimize data for the rest of
 | Entity                                       | Description |
 |----------------------------------------------|-------------|
 | `sensor.pv_ctrl_battery_soc`                 | provides SOC of PV system battery. Valid values are from range 0-100 and represents percentage of battery charge |
-| `sensor.pv_ctrl_solar_forecast_today` and<br>`sensor.pv_ctrl_solar_forecast_tomorrow`|  Both provide array of forecasted energy (in kWh) for each 30 min period.<br>The period length is provided by `attributes.period` attribute.<br>Data are stored under `attributes.data` as array of following structure `{time: <time>, energy: <val1>, energy_10: <val2>, energy_90: <val3> }`. The `energy`, `energy_10` and `energy_90` represents 50th, 10th and 90% percentile predition originally provided by Solcast;<br><br>Note that value energy is scaled down to 30-minute intervals (unlike in Solcast integration). Also the result is stripped out from leading and trailing zero-values records. |
+| `sensor.pv_ctrl_solar_forecast_today` and<br>`sensor.pv_ctrl_solar_forecast_tomorrow`|  Both provide array of forecasted energy (in kWh) for each 30 min period.<br>The period length is provided by `attributes.period` attribute.<br>Data are stored under `attributes.data` as array of following structure `{time: <time>, energy: <val1>, energy_10: <val2>, energy_50: <val3>, energy_90: <val4>, power_balanced: <val5> }`. The  `power_10`, `power_50` and `power_90` represents 10th, 50th and 90% percentile predition originally provided by Solcast; The `power_balanced` is the result of balancing between pesimistic and optimistic values. <br>The `energy` carries a value of energy predicted for the period (30 min) derrived from the balanced power.
 | `sensor.pv_ctrl_spot_electricity_prices`           | Provides array of prices (for kWh) valid within 15-minute intervals.<br>The period length is provided by `attributes.period` attribute.<br>Data are stored under attributes.data as array of following structure: `{time: <time>, val: <price>}` |
