@@ -18,7 +18,7 @@ The main idea is based on the observed evolution of spot prices during each day.
 
 ![Spot prices during a day](./images/spot_price_day.svg)
 
-It usually features two peaks - morning and evening - and a trough around midday. The peaks - typically short - are a good opportunity to sell excess energy accumulated in the battery at the best prices. Recharging is shifted to cheapest hours, allowing to utilize time of dropping but still good prices to sell even more produces PV energy.
+It usually features two peaks - morning and evening - and a trough around midday. The peaks - typically short - are a good opportunity to sell excess energy accumulated in the battery at the best prices. Recharging is shifted to the cheapest hours, allowing you to take advantage of dropping - but still good - prices to sell more of the generated PV energy.
 
 To avoid battery energy shortages, it uses PV forecasts to support the decision logic.
 
@@ -48,7 +48,7 @@ The configuration of edge conditions may differ between installations. It should
 > :electric_plug: To sell stored energy, the inverter is switched to a mode that exports battery energy to the grid. Depending on the inverter model and/or firmware version, such a mode may be available as a main operating mode or as a scheduled mode (Time of Use, ToU).
 This implementation uses a scheduled mode compatible with Wattsonic Gen3 firmware v2.
 
-> :exclamation: Watch the discharge rate. Discharging too quickly can increase battery wear. A recommended range is 0.3–0.7C. Also ensure you do not exceed any applicable grid injection limits.
+> :exclamation:  Watch the discharge rate. Discharging too quickly can increase battery wear. A recommended range is 0.3–0.7C. Also, ensure you do not exceed any applicable grid injection limits.
 
 ## Charge Delay
 
@@ -62,11 +62,10 @@ During this time:
 This period includes several safeguards:
 
 * It is activated only if it follows the morning discharge. This is based on the assumption that if discharge was skipped, there likely isn’t enough PV energy available.
-* During this period, the battery still supplies energy to the household if PV does not cover demand. If battery SOC drops to the predefined limit, the mode is interrupted and the inverter returns to normal operation, prioritizing battery charging from PV.
+* During this period, the battery still supplies energy to the household if PV does not cover demand. If battery SOC drops to the predefined limit, the mode is interrupted, and the inverter returns to normal operation, prioritizing battery charging from PV.
 * If spot prices drop below a certain limit, selling no longer makes sense. Instead of suppressing PV production, it is better to use it to charge the battery.
 
-> :electric_plug: This inverter operation is often referred to as Feed-in Mode. It prioritizes exporting PV energy to the grid instead of charging the battery. If this mode is unavailable, limiting the charging current can achieve a similar effect - although Feed-in Mode will still allow battery charging when PV production exceeds export limits.
-Wattsonic Gen3 with firmware 2.x does not offer Feed-in Mode; It was introduced in later versions.
+> :electric_plug:  This inverter operation is often referred to as Feed-in Mode. It prioritizes exporting PV energy to the grid instead of charging the battery. If this mode is unavailable, limiting the charging current can achieve a similar effect - although Feed-in Mode will still allow battery charging when PV production exceeds export limits. Wattsonic Gen3 with firmware 2.x does not offer Feed-in Mode; It was introduced in later versions.
 
 ## Cheapest Charge
 
@@ -80,7 +79,7 @@ Here are a few parameters that help calculate the required charging window:
 
 On top of that, if unselable prices extend the cheapest time span, the phase will start as early as possible.
 
-> :electric_plug: Charging during the cheapest hours requires no special inverter mode - just the standard “General” mode. 
+> :electric_plug:  Charging during the cheapest hours requires no special inverter mode - just the standard “General” mode.
 
 # The Package
 
@@ -97,17 +96,22 @@ On top of that, the proxy sensors preprocess the data, making it easier to use i
 Like proxy sensors, the `script.pv_ctrl_inverter` acts as an abstraction layer, this time for controlling the inverter. It is a single, parameterized script implementing inverter-specific commands.
 
 **TimeWindow Sensors**
-These template sensors calculate the start and end of charging and discharging periods for the current day:
+These template sensors calculate the start and end of charging and discharging periods for the current day.
+
+<details><summary>List of themplate sensors</summary>
 
 * `sensor.pv_ctrl_most_expensive_hours_morning` – morning discharge window
 * `sensor.pv_ctrl_most_expensive_hours_afternoon` – evening discharge window
 * `sensor.pv_ctrl_cheapest_hours` – cheapest charging window
+</details>
 
-They also store additional data in attributes.data, used both by automation and for dashboard display.
+They also store additional data in `attributes.data`, used by automation and by the dashboard.
 
 **Automation State and Config Entities**
 
 Both are implemented as input entities, surviving Home Assistant restarts. All of them are exposed on GUI.
+
+<details><summary>List of input entities</summary>
 
 | Entity                                       | Description |
 |----------------------------------------------|-------------|
@@ -125,6 +129,7 @@ Both are implemented as input entities, surviving Home Assistant restarts. All o
 | `input_number.pv_ctrl_battery_capacity`     | Used in calculation of 1% of SOC |
 | `input_number.pv_ctrl_solcast_forecast_balance` | Allows setting a balance between 10%, 50%, 90% percentile suncast prediction |
 | `input_datetime.pv_ctrl_charge_delay_time_limit` | Limits predicted end time of cheapest charge time window. Might be helpful if cheapest hours (occasionally) starts late afternoon, but you don't want to delay charging so much |
+</details>
 
 **The Automation**
 Finally, `automation.pv_ctrl_executor` is the core component that makes decisions based on its current state and inputs from sensors.
@@ -153,8 +158,6 @@ The source code is GitHub:
 
 ## Adjusting for different integrations
 
-> :exclamation: It is important to maintain consistent unit magnitudes for all sensors and inputs (kW / kWh).
-
 It's possible and requires:
 
 * Adjusting the script, implementing inverter-specific commands (see below)
@@ -162,15 +165,21 @@ It's possible and requires:
 * Changing monetary units, since original code uses CZK.
 * Adjust dashboard, since it uses some unproxied entities directly
 
+> :exclamation: It is important to maintain consistent unit magnitudes for all sensors and inputs (kW / kWh).
+
+<details><summary>Technical details</summary>
+
 ### The Script
 
 Example:
+
 ```yaml
 action: script.pv_ctrl_inverter
 data:
   mode: general
 ```
-Supported modes:
+
+The modes listed below represent automation modes rather than inverter modes. For instance, the general mode not only switches to the general inverter setting, but also resets other settings.
 
 * `general` – Resets inverter to general mode, including restoring unlimited battery charging
 * `discharge_grid` – Enables discharge to the grid (implemented using Wattsonic scheduling)
@@ -220,3 +229,4 @@ The state carries current price (for kWh), while attributes privide detailed dat
     ...
   ]
   ```
+</details>
