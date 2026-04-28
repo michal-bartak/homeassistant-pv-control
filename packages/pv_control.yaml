@@ -157,8 +157,8 @@ pv_ctrl_control:
                 {% set p50 = val.pv_estimate %}
                 {% set p10 = val.pv_estimate10 %}
                 {% set p90 = val.pv_estimate90 %}
-                {% set pbal = p50 + solcast_balance * (p50 - p10) 
-                              if solcast_balance < 0 else 
+                {% set pbal = p50 + solcast_balance * (p50 - p10)
+                              if solcast_balance < 0 else
                               p50 + solcast_balance * (p90 - p50) %}
 
                 {% set obj  = { "time" : val.period_start.isoformat(), "energy": pbal / 2, "power_balanced": pbal, "power_10" : p10 , "power_50" : p50 , "power_90" : p90 } %}
@@ -177,7 +177,7 @@ pv_ctrl_control:
             data: |
               {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_tomorrow', 'detailedForecast') %}
               {% set solcast_balance  = states('input_number.pv_ctrl_solcast_forecast_balance') | int(0) / 100 %}
-              
+
               {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
               {% if nz %}
                 {% set first = pv_data.index(nz[0]) %}
@@ -192,8 +192,8 @@ pv_ctrl_control:
                 {% set p50 = val.pv_estimate %}
                 {% set p10 = val.pv_estimate10 %}
                 {% set p90 = val.pv_estimate90 %}
-                {% set pbal = p50 + solcast_balance * (p50 - p10) 
-                              if solcast_balance < 0 else 
+                {% set pbal = p50 + solcast_balance * (p50 - p10)
+                              if solcast_balance < 0 else
                               p50 + solcast_balance * (p90 - p50) %}
 
                 {% set obj  = { "time" : val.period_start.isoformat(), "energy": pbal / 2, "power_balanced": pbal, "power_10" : p10 , "power_50" : p50 , "power_90" : p90 } %}
@@ -567,7 +567,8 @@ pv_ctrl_control:
       description: Master control script for PV Inverter
       icon: mdi:solar-power
       mode: queued
-
+      variables:
+        wattsonic_version: "{{ states('sensor.wattsonic_firmware_version1').split(',')[0] | int }}"
       fields:
         mode:
           description: Mode selector
@@ -579,22 +580,34 @@ pv_ctrl_control:
             - conditions: "{{ mode == 'general' }}"
               alias: General Mode, Also re-enables the charge limit to normal state
               sequence:
-                - alias: "Set General mode, reset battery charge limit"
-                  action: script.wattsonic_set_charge_current_limit
-                  data:
-                    limit: 200
+                - if:
+                    - condition: template
+                      value_template: "{{ wattsonic_version < 5 }}"
+                  then:
+                    - alias: "Set General mode, reset battery charge limit"
+                      action: script.wattsonic_set_charge_current_limit
+                      data:
+                        limit: 200
                 - action: script.wattsonic_mode_general
 
             # 🔹 FeedIn Phase (or substritute, mainly limiting charging to battery )
             - conditions: "{{ mode == 'feedin' }}"
               alias: FeedIn mode, Or general mode with limited battery charge
               sequence:
-                - alias: "Set Battery charge current to zero"
-                  action: script.wattsonic_set_charge_current_limit
-                  data:
-                    limit: 0
-                - alias: set General mode
-                  action: script.wattsonic_mode_general
+                - if:
+                    - condition: template
+                      value_template: "{{ wattsonic_version >= 5 }}"
+                  then:
+                    - alias: "Call Wattsonic FeedIn mode"
+                      action: script.wattsonic_mode_feed_in
+                  else:
+                    sequence:
+                      - alias: "Set Battery charge current to zero"
+                        action: script.wattsonic_set_charge_current_limit
+                        data:
+                          limit: 0
+                      - alias: set General mode
+                        action: script.wattsonic_mode_general
 
             # 🔹 DISCHARGE TO GRID (eco + battery config)
             - conditions: "{{ mode == 'discharge_grid' }}"
@@ -833,7 +846,7 @@ pv_ctrl_control:
             data:
               message: >-
                 mode: mode {{ mode }}, next_mode {{ next_mode }}, trigger {{ trigger.idx }} - {{ trigger.alias }} - {{ trigger.entity_id }},
-                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }}, 
+                morning_time {{ as_datetime(morning_time) }}, charge_time {{ as_datetime(charge_time) }}, evening_time {{ as_datetime(evening_time) }},
                 current_price {{ current_price }}, min_export_price {{ min_export_price  }}, soc {{ soc }},
                 min_soc_morning {{ min_soc_morning  }}, min_soc_evening {{ min_soc_evening  }}
               logger: FVE_CTRL.{{ states('input_select.pv_ctrl_mode') }}
