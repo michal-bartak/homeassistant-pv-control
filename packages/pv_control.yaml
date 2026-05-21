@@ -177,7 +177,7 @@ pv_ctrl_control:
             data: |
               {% set pv_data = state_attr('sensor.solcast_pv_forecast_forecast_tomorrow', 'detailedForecast') %}
               {% set solcast_balance  = states('input_number.pv_ctrl_solcast_forecast_balance') | int(0) / 100 %}
-              
+
               {% set nz = pv_data | selectattr('pv_estimate','ne',0) | list %}
               {% if nz %}
                 {% set first = pv_data.index(nz[0]) %}
@@ -321,6 +321,14 @@ pv_ctrl_control:
                 {% endif %}
               {% endfor %}
             {% endfor %}
+
+            {# prevents moving the target, incl jumping from future to the past #}
+            {# If happens, shift the results to 1 min in the future, to let automation to pick it up #}
+            {% if best.start < now() %}
+              {% set best.end   = now() + timedelta(minutes=1) + (best.end - best.start) %}
+              {% set best.start = now() + timedelta(minutes=1) %}
+              {% set locked = true %}
+            {% endif %}
 
             {% if best.start %}
               {{ dict(
@@ -610,7 +618,7 @@ pv_ctrl_control:
                       - 2
                       - 0
                       - 65535
-                      - 420
+                      - 350
                       - 65535
                       - 0
                       - 5947
